@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Linq;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.DependencyInjection;
 using CardDuel.ServerApi.Contracts;
 using CardDuel.ServerApi.Game;
 using CardDuel.ServerApi.Infrastructure;
@@ -135,7 +136,7 @@ public sealed class InMemoryMatchService : IMatchService, IDisposable
 {
     private readonly IDeckRepository _deckRepository;
     private readonly ICardCatalogService _catalogService;
-    private readonly AppDbContext _dbContext;
+    private readonly IServiceProvider _serviceProvider;
     private readonly ConcurrentDictionary<string, MatchRoom> _matches = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, string> _roomCodes = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _sync = new();
@@ -144,11 +145,11 @@ public sealed class InMemoryMatchService : IMatchService, IDisposable
     private readonly Timer _timer;
     private readonly TimeSpan _disconnectGrace;
 
-    public InMemoryMatchService(IDeckRepository deckRepository, ICardCatalogService catalogService, IConfiguration configuration, AppDbContext dbContext)
+    public InMemoryMatchService(IDeckRepository deckRepository, ICardCatalogService catalogService, IConfiguration configuration, IServiceProvider serviceProvider)
     {
         _deckRepository = deckRepository;
         _catalogService = catalogService;
-        _dbContext = dbContext;
+        _serviceProvider = serviceProvider;
         _disconnectGrace = TimeSpan.FromSeconds(configuration.GetValue<int?>("Game:DisconnectGraceSeconds") ?? 20);
         _timer = new Timer(_ => Tick(), null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
     }
@@ -282,7 +283,10 @@ public sealed class InMemoryMatchService : IMatchService, IDisposable
     {
         try
         {
-            var match = _dbContext.Matches.FirstOrDefault(m => m.MatchId == matchId);
+            using var scope = _serviceProvider.CreateScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+            var match = dbContext.Matches.FirstOrDefault(m => m.MatchId == matchId);
             if (match == null)
                 throw new InvalidOperationException($"Match {matchId} not found");
 
@@ -318,8 +322,8 @@ public sealed class InMemoryMatchService : IMatchService, IDisposable
             match.Player1RatingAfter = newRating1;
             match.Player2RatingAfter = newRating2;
 
-            _dbContext.Matches.Update(match);
-            _dbContext.SaveChanges();
+            dbContext.Matches.Update(match);
+            dbContext.SaveChanges();
 
             return new MatchCompletionResponse(
                 matchId,
