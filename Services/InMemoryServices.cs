@@ -1,4 +1,5 @@
 using System.Collections.Concurrent;
+using System.Linq;
 using Microsoft.Extensions.Configuration;
 using CardDuel.ServerApi.Contracts;
 using CardDuel.ServerApi.Game;
