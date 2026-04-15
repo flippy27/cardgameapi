@@ -1,6 +1,8 @@
 using System.Collections.Concurrent;
+using Microsoft.Extensions.Configuration;
 using CardDuel.ServerApi.Contracts;
 using CardDuel.ServerApi.Game;
+using CardDuel.ServerApi.Infrastructure;
 
 namespace CardDuel.ServerApi.Services;
 
@@ -28,6 +30,7 @@ public interface IMatchService
     MatchSnapshot PlayCard(string matchId, string playerId, string runtimeHandKey, int slotIndex);
     MatchSnapshot EndTurn(string matchId, string playerId);
     MatchSnapshot Forfeit(string matchId, string playerId);
+    MatchCompletionResponse CompleteMatch(string matchId, string playerId, string opponentId, bool playerWon, int durationSeconds);
     MatchSnapshot MarkDisconnected(string matchId, string playerId);
     MatchSnapshot GetSnapshot(string matchId, string playerId, bool spectator = false);
     MatchSummaryDto GetSummary(string matchId);
@@ -131,6 +134,7 @@ public sealed class InMemoryMatchService : IMatchService, IDisposable
 {
     private readonly IDeckRepository _deckRepository;
     private readonly ICardCatalogService _catalogService;
+    private readonly AppDbContext _dbContext;
     private readonly ConcurrentDictionary<string, MatchRoom> _matches = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, string> _roomCodes = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _sync = new();
@@ -139,10 +143,11 @@ public sealed class InMemoryMatchService : IMatchService, IDisposable
     private readonly Timer _timer;
     private readonly TimeSpan _disconnectGrace;
 
-    public InMemoryMatchService(IDeckRepository deckRepository, ICardCatalogService catalogService, IConfiguration configuration)
+    public InMemoryMatchService(IDeckRepository deckRepository, ICardCatalogService catalogService, IConfiguration configuration, AppDbContext dbContext)
     {
         _deckRepository = deckRepository;
         _catalogService = catalogService;
+        _dbContext = dbContext;
         _disconnectGrace = TimeSpan.FromSeconds(configuration.GetValue<int?>("Game:DisconnectGraceSeconds") ?? 20);
         _timer = new Timer(_ => Tick(), null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
     }
@@ -270,6 +275,60 @@ public sealed class InMemoryMatchService : IMatchService, IDisposable
         room.Engine.Forfeit(playerId);
         var seatIndex = room.Engine.Seats.First(x => x.PlayerId == playerId).SeatIndex;
         return room.Engine.CreateSnapshotForSeat(seatIndex);
+    }
+
+    public MatchCompletionResponse CompleteMatch(string matchId, string playerId, string opponentId, bool playerWon, int durationSeconds)
+    {
+        try
+        {
+            var match = _dbContext.Matches.FirstOrDefault(m => m.MatchId == matchId);
+            if (match == null)
+                throw new InvalidOperationException($"Match {matchId} not found");
+
+            if (match.CompletedAt.HasValue)
+                return new MatchCompletionResponse(matchId, false, "Match already completed");
+
+            var isPlayer1 = match.Player1Id == playerId;
+            var isPlayer2 = match.Player2Id == playerId;
+
+            if (!isPlayer1 && !isPlayer2)
+                throw new InvalidOperationException("Player not in this match");
+
+            // Verify opponent ID matches
+            var expectedOpponent = isPlayer1 ? match.Player2Id : match.Player1Id;
+            if (expectedOpponent != opponentId)
+                throw new InvalidOperationException("Opponent ID mismatch");
+
+            // Get current ratings (default 1000 if not set)
+            var ratingService = new EloRatingService();
+            var player1Rating = match.Player1RatingBefore ?? 1000;
+            var player2Rating = match.Player2RatingBefore ?? 1000;
+
+            // Determine winner
+            var player1Won = isPlayer1 ? playerWon : !playerWon;
+            var (newRating1, newRating2) = ratingService.CalculateEloChange(player1Rating, player2Rating, player1Won);
+
+            // Update match record
+            match.WinnerId = playerWon ? playerId : opponentId;
+            match.DurationSeconds = durationSeconds;
+            match.CompletedAt = DateTimeOffset.UtcNow;
+            match.Player1RatingBefore = player1Rating;
+            match.Player2RatingBefore = player2Rating;
+            match.Player1RatingAfter = newRating1;
+            match.Player2RatingAfter = newRating2;
+
+            _dbContext.Matches.Update(match);
+            _dbContext.SaveChanges();
+
+            return new MatchCompletionResponse(
+                matchId,
+                true,
+                $"Match completed. Winner: {(playerWon ? playerId : opponentId)}, Rating change: {(playerWon ? "+" : "")}{newRating1 - player1Rating}");
+        }
+        catch (Exception ex)
+        {
+            return new MatchCompletionResponse(matchId, false, $"Error: {ex.Message}");
+        }
     }
 
     public MatchSnapshot MarkDisconnected(string matchId, string playerId)

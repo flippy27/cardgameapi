@@ -48,7 +48,7 @@ public sealed record PlayCardRequest(
     [property: Required] string MatchId,
     [property: Required] string PlayerId,
     [property: Required] string RuntimeHandKey,
-    int SlotIndex);
+    [property: Range(0, 2)] int SlotIndex);
 
 public sealed record EndTurnRequest(
     [property: Required] string MatchId,
@@ -72,3 +72,16 @@ public sealed record DeckUpsertRequest(
     [property: Required] string DeckId,
     [property: Required] string DisplayName,
     [property: Required] IReadOnlyList<string> CardIds);
+
+public sealed record MatchCompletionRequest(
+    [property: Required] string PlayerId,
+    [property: Required] string OpponentId,
+    bool PlayerWon,
+    int DurationSeconds,
+    int? PlayerRatingBefore = null,
+    int? OpponentRatingBefore = null);
+
+public sealed record MatchCompletionResponse(
+    string MatchId,
+    bool Recorded,
+    string Message);

@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using CardDuel.ServerApi.Contracts;
@@ -52,9 +53,17 @@ public sealed class MatchesController(IMatchService matchService) : ControllerBa
         return Ok(matchService.Forfeit(matchId, request.PlayerId));
     }
 
+    [HttpPost("{matchId}/complete")]
+    public ActionResult<MatchCompletionResponse> Complete(string matchId, MatchCompletionRequest request)
+    {
+        EnsurePlayer(request.PlayerId);
+        return Ok(matchService.CompleteMatch(matchId, request.PlayerId, request.OpponentId,
+            request.PlayerWon, request.DurationSeconds));
+    }
+
     private void EnsurePlayer(string playerId)
     {
-        var authenticated = User.FindFirst("sub")?.Value;
+        var authenticated = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         if (!string.Equals(authenticated, playerId, StringComparison.Ordinal))
         {
             throw new UnauthorizedAccessException("Authenticated player mismatch.");
