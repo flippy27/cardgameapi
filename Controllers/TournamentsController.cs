@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using CardDuel.ServerApi.Infrastructure;
@@ -21,7 +22,7 @@ public sealed class TournamentsController(InMemoryTournamentStore tournamentStor
     [HttpPost("{tournamentId}/register")]
     public IActionResult Register(string tournamentId)
     {
-        var playerId = User.FindFirst("sub")?.Value ?? throw new UnauthorizedAccessException("Missing sub.");
+        var playerId = User.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? throw new UnauthorizedAccessException("Missing player ID.");
         return Ok(tournamentStore.Register(tournamentId, playerId));
     }
 }

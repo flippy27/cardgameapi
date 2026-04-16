@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using CardDuel.ServerApi.Contracts;
@@ -33,7 +34,7 @@ public sealed class MatchmakingController(IMatchService matchService) : Controll
 
     private void EnsurePlayer(string playerId)
     {
-        var authenticated = User.FindFirst("sub")?.Value;
+        var authenticated = User.FindFirst(ClaimTypes.NameIdentifier)?.Value;
         if (!string.Equals(authenticated, playerId, StringComparison.Ordinal))
         {
             throw new UnauthorizedAccessException("Authenticated player mismatch.");

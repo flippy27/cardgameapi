@@ -1,16 +1,39 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+using CardDuel.ServerApi.Infrastructure;
 
 namespace CardDuel.ServerApi.Controllers;
 
 [ApiController]
 [Route("api/health")]
-public sealed class HealthController : ControllerBase
+public sealed class HealthController(AppDbContext dbContext) : ControllerBase
 {
     [HttpGet]
-    public IActionResult Get() => Ok(new
+    public async Task<IActionResult> Get()
     {
-        ok = true,
-        service = "cardduel-server-api",
-        utc = DateTimeOffset.UtcNow
-    });
+        var dbHealthy = await CheckDatabaseHealth();
+
+        return Ok(new
+        {
+            ok = dbHealthy,
+            service = "cardduel-server-api",
+            version = "1.0.0",
+            environment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") ?? "Unknown",
+            utc = DateTimeOffset.UtcNow,
+            database = dbHealthy ? "healthy" : "unhealthy"
+        });
+    }
+
+    private async Task<bool> CheckDatabaseHealth()
+    {
+        try
+        {
+            await dbContext.Database.ExecuteSqlRawAsync("SELECT 1");
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
 }

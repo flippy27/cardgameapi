@@ -1,3 +1,4 @@
+using System.Security.Claims;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using CardDuel.ServerApi.Services;
@@ -93,7 +94,7 @@ public sealed class MatchHub(IMatchService matchService) : Hub
 
     private string ResolvePlayerId()
     {
-        return Context.User?.FindFirst("sub")?.Value
+        return Context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value
             ?? throw new HubException("Missing authenticated player id.");
     }
 
