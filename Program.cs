@@ -150,9 +150,22 @@ var app = builder.Build();
 // Migrate database and seed
 using (var scope = app.Services.CreateScope())
 {
-    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-    db.Database.Migrate();
-    CardCatalogSeeder.SeedCards(db);
+    try
+    {
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var migrationLogger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+        migrationLogger.LogInformation("Starting database migrations...");
+        db.Database.Migrate();
+        migrationLogger.LogInformation("Database migrations completed successfully");
+        CardCatalogSeeder.SeedCards(db);
+        migrationLogger.LogInformation("Card catalog seeded");
+    }
+    catch (Exception ex)
+    {
+        var migrationLogger = scope.ServiceProvider.GetRequiredService<ILogger<Program>>();
+        migrationLogger.LogError(ex, "Failed to migrate or seed database");
+        throw;
+    }
 }
 
 app.UseSwagger();

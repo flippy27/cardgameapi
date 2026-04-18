@@ -24,7 +24,7 @@ services:
     environment:
       - ASPNETCORE_ENVIRONMENT=Production
       - JWT_SIGNING_KEY=${JWT_SIGNING_KEY:-dev-key-minimum-32-characters-long-xxxxxxxxxx}
-      - ConnectionStrings__DefaultConnection=Server=postgres;Port=5432;Database=cardduel;User Id=postgres;Password=${DB_PASSWORD:-postgres}
+      - ConnectionStrings__DefaultConnection=Server=postgres;Port=5432;Database=cardduel;User Id=postgres;Password=${DB_PASSWORD:-himym}
       - SignalR__RedisConnectionString=redis:6379
       - SignalR__UseRedisBackplane=true
     depends_on:
@@ -49,9 +49,11 @@ services:
     environment:
       - POSTGRES_DB=cardduel
       - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=${DB_PASSWORD:-postgres}
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-himym}
     volumes:
       - cardduel-postgres-data:/var/lib/postgresql/data
+    ports:
+      - "5433:5432"
     expose:
       - "5432"
     healthcheck:
