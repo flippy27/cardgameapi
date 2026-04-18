@@ -9,7 +9,7 @@ namespace CardDuel.ServerApi.Controllers;
 
 [ApiController]
 [Authorize]
-[Route("api/matches")]
+[Route("api/v1/matches")]
 public sealed class MatchHistoryController(AppDbContext dbContext) : ControllerBase
 {
     [HttpGet("history/{playerId}")]

@@ -5,6 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 using CardDuel.ServerApi.Contracts;
 using CardDuel.ServerApi.Game;
 using CardDuel.ServerApi.Infrastructure;
+using CardDuel.ServerApi.Infrastructure.Models;
 
 namespace CardDuel.ServerApi.Services;
 
@@ -33,6 +34,7 @@ public interface IMatchService
     MatchSnapshot EndTurn(string matchId, string playerId);
     MatchSnapshot Forfeit(string matchId, string playerId);
     MatchCompletionResponse CompleteMatch(string matchId, string playerId, string opponentId, bool playerWon, int durationSeconds);
+    PostActionsResponse ProcessActions(string matchId, PostActionsRequest request);
     MatchSnapshot MarkDisconnected(string matchId, string playerId);
     MatchSnapshot GetSnapshot(string matchId, string playerId, bool spectator = false);
     MatchSummaryDto GetSummary(string matchId);
@@ -260,6 +262,10 @@ public sealed class InMemoryMatchService : IMatchService, IDisposable
         var room = GetRoom(matchId);
         room.Engine.PlayCard(playerId, runtimeHandKey, (BoardSlot)slotIndex);
         var seatIndex = room.Engine.Seats.First(x => x.PlayerId == playerId).SeatIndex;
+
+        // Log action to replay
+        _ = LogReplayActionAsync(matchId, playerId, "PlayCard", new { runtimeHandKey, slotIndex });
+
         return room.Engine.CreateSnapshotForSeat(seatIndex);
     }
 
@@ -268,6 +274,10 @@ public sealed class InMemoryMatchService : IMatchService, IDisposable
         var room = GetRoom(matchId);
         room.Engine.EndTurn(playerId);
         var seatIndex = room.Engine.Seats.First(x => x.PlayerId == playerId).SeatIndex;
+
+        // Log action to replay
+        _ = LogReplayActionAsync(matchId, playerId, "EndTurn", new { });
+
         return room.Engine.CreateSnapshotForSeat(seatIndex);
     }
 
@@ -276,6 +286,10 @@ public sealed class InMemoryMatchService : IMatchService, IDisposable
         var room = GetRoom(matchId);
         room.Engine.Forfeit(playerId);
         var seatIndex = room.Engine.Seats.First(x => x.PlayerId == playerId).SeatIndex;
+
+        // Log action to replay
+        _ = LogReplayActionAsync(matchId, playerId, "Forfeit", new { });
+
         return room.Engine.CreateSnapshotForSeat(seatIndex);
     }
 
@@ -285,54 +299,119 @@ public sealed class InMemoryMatchService : IMatchService, IDisposable
         {
             using var scope = _serviceProvider.CreateScope();
             var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var ratingDbService = scope.ServiceProvider.GetRequiredService<IRatingDbService>();
 
-            var match = dbContext.Matches.FirstOrDefault(m => m.MatchId == matchId);
-            if (match == null)
-                throw new InvalidOperationException($"Match {matchId} not found");
+            using var transaction = dbContext.Database.BeginTransaction();
+            try
+            {
+                var room = GetRoom(matchId);
+                var match = dbContext.Matches.FirstOrDefault(m => m.MatchId == matchId);
 
-            if (match.CompletedAt.HasValue)
-                return new MatchCompletionResponse(matchId, false, "Match already completed");
+                if (match == null)
+                {
+                    match = new MatchRecord
+                    {
+                        Id = Guid.NewGuid().ToString(),
+                        MatchId = matchId,
+                        RoomCode = room.Engine.RoomCode,
+                        Player1Id = room.Engine.Seats[0].PlayerId,
+                        Player2Id = room.Engine.Seats[1].PlayerId,
+                        Mode = room.Engine.Mode,
+                        CreatedAt = DateTimeOffset.UtcNow
+                    };
+                    dbContext.Matches.Add(match);
+                    dbContext.SaveChanges();
+                }
 
-            var isPlayer1 = match.Player1Id == playerId;
-            var isPlayer2 = match.Player2Id == playerId;
+                if (match.CompletedAt.HasValue)
+                    return new MatchCompletionResponse(matchId, false, "Match already completed");
 
-            if (!isPlayer1 && !isPlayer2)
-                throw new InvalidOperationException("Player not in this match");
+                var isPlayer1 = match.Player1Id == playerId;
+                var isPlayer2 = match.Player2Id == playerId;
 
-            // Verify opponent ID matches
-            var expectedOpponent = isPlayer1 ? match.Player2Id : match.Player1Id;
-            if (expectedOpponent != opponentId)
-                throw new InvalidOperationException("Opponent ID mismatch");
+                if (!isPlayer1 && !isPlayer2)
+                    throw new InvalidOperationException("Player not in this match");
 
-            // Get current ratings (default 1000 if not set)
-            var ratingService = new EloRatingService();
-            var player1Rating = match.Player1RatingBefore ?? 1000;
-            var player2Rating = match.Player2RatingBefore ?? 1000;
+                var expectedOpponent = isPlayer1 ? match.Player2Id : match.Player1Id;
+                if (expectedOpponent != opponentId)
+                    throw new InvalidOperationException("Opponent ID mismatch");
 
-            // Determine winner
-            var player1Won = isPlayer1 ? playerWon : !playerWon;
-            var (newRating1, newRating2) = ratingService.CalculateEloChange(player1Rating, player2Rating, player1Won);
+                var player1Rating = match.Player1RatingBefore ?? 1000;
+                var player2Rating = match.Player2RatingBefore ?? 1000;
+                var player1Won = isPlayer1 ? playerWon : !playerWon;
 
-            // Update match record
-            match.WinnerId = playerWon ? playerId : opponentId;
-            match.DurationSeconds = durationSeconds;
-            match.CompletedAt = DateTimeOffset.UtcNow;
-            match.Player1RatingBefore = player1Rating;
-            match.Player2RatingBefore = player2Rating;
-            match.Player1RatingAfter = newRating1;
-            match.Player2RatingAfter = newRating2;
+                var (newRating1, newRating2) = ratingDbService.UpdateRatingsForMatch(
+                    match.Player1Id, match.Player2Id, player1Rating, player2Rating, player1Won);
 
-            dbContext.Matches.Update(match);
-            dbContext.SaveChanges();
+                match.WinnerId = playerWon ? playerId : opponentId;
+                match.DurationSeconds = durationSeconds;
+                match.CompletedAt = DateTimeOffset.UtcNow;
+                match.Player1RatingBefore = player1Rating;
+                match.Player2RatingBefore = player2Rating;
+                match.Player1RatingAfter = newRating1;
+                match.Player2RatingAfter = newRating2;
 
-            return new MatchCompletionResponse(
-                matchId,
-                true,
-                $"Match completed. Winner: {(playerWon ? playerId : opponentId)}, Rating change: {(playerWon ? "+" : "")}{newRating1 - player1Rating}");
+                dbContext.Matches.Update(match);
+                dbContext.SaveChanges();
+                transaction.Commit();
+
+                return new MatchCompletionResponse(
+                    matchId,
+                    true,
+                    $"Match completed. Winner: {(playerWon ? playerId : opponentId)}, Rating change: {(playerWon ? "+" : "")}{newRating1 - player1Rating}");
+            }
+            catch
+            {
+                transaction.Rollback();
+                throw;
+            }
         }
         catch (Exception ex)
         {
             return new MatchCompletionResponse(matchId, false, $"Error: {ex.Message}");
+        }
+    }
+
+    public PostActionsResponse ProcessActions(string matchId, PostActionsRequest request)
+    {
+        try
+        {
+            using var scope = _serviceProvider.CreateScope();
+            var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+            var match = dbContext.Matches.FirstOrDefault(m => m.MatchId == matchId);
+            if (match == null)
+            {
+                match = new MatchRecord
+                {
+                    Id = Guid.NewGuid().ToString(),
+                    MatchId = matchId,
+                    CreatedAt = DateTimeOffset.UtcNow
+                };
+                dbContext.Matches.Add(match);
+                dbContext.SaveChanges();
+            }
+
+            foreach (var action in request.Actions)
+            {
+                var actionRecord = new MatchAction
+                {
+                    Id = Guid.NewGuid().ToString(),
+                    MatchId = matchId,
+                    PlayerId = action.PlayerId,
+                    ActionType = action.ActionType,
+                    ActionNumber = action.ActionNumber,
+                    ActionData = System.Text.Json.JsonSerializer.Serialize(action.Data) ?? ""
+                };
+                dbContext.MatchActions.Add(actionRecord);
+            }
+
+            dbContext.SaveChanges();
+            return new PostActionsResponse(matchId, request.Actions.Count, true, $"Recorded {request.Actions.Count} actions");
+        }
+        catch (Exception ex)
+        {
+            return new PostActionsResponse(matchId, 0, false, $"Error: {ex.Message}");
         }
     }
 
@@ -425,6 +504,23 @@ public sealed class InMemoryMatchService : IMatchService, IDisposable
     }
 
     public void Dispose() => _timer.Dispose();
+
+    private async Task LogReplayActionAsync(string matchId, string playerId, string actionType, object actionData)
+    {
+        try
+        {
+            using var scope = _serviceProvider.CreateScope();
+            var replayService = scope.ServiceProvider.GetRequiredService<IReplayPersistenceService>();
+            var actionNumber = MatchActionCounter.IncrementAndGet(matchId);
+            await replayService.LogActionAsync(matchId, actionNumber, playerId, actionType, actionData);
+        }
+        catch (Exception ex)
+        {
+            // Non-blocking - don't fail the game action if replay logging fails
+            var logger = _serviceProvider.GetRequiredService<ILogger<InMemoryMatchService>>();
+            logger.LogError(ex, "Failed to log replay action for match {MatchId}", matchId);
+        }
+    }
 
     private sealed record WaitingTicket(string PlayerId, string DeckId, int Rating, string MatchId);
 

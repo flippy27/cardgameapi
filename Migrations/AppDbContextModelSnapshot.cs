@@ -17,10 +17,150 @@ namespace CardDuel.ServerApi.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "8.0.0")
+                .HasAnnotation("ProductVersion", "8.0.4")
                 .HasAnnotation("Relational:MaxIdentifierLength", 63);
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
+
+            modelBuilder.Entity("CardDuel.ServerApi.Infrastructure.Models.AuditLog", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("text");
+
+                    b.Property<string>("Action")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("Details")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<string>("IpAddress")
+                        .IsRequired()
+                        .HasMaxLength(45)
+                        .HasColumnType("character varying(45)");
+
+                    b.Property<string>("Resource")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("ResourceId")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<int?>("StatusCode")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CreatedAt")
+                        .IsDescending();
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("Resource", "ResourceId");
+
+                    b.ToTable("AuditLogs");
+                });
+
+            modelBuilder.Entity("CardDuel.ServerApi.Infrastructure.Models.CardDefinition", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("text");
+
+                    b.Property<string>("AbilitiesJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<int>("AllowedRow")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Armor")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("Attack")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("CardId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<int>("DefaultAttackSelector")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)");
+
+                    b.Property<int>("Health")
+                        .HasColumnType("integer");
+
+                    b.Property<int>("ManaCost")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CardId")
+                        .IsUnique();
+
+                    b.ToTable("Cards");
+                });
+
+            modelBuilder.Entity("CardDuel.ServerApi.Infrastructure.Models.MatchAction", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ActionData")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<int>("ActionNumber")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ActionType")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("MatchId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("PlayerId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("MatchId");
+
+                    b.HasIndex("MatchId", "ActionNumber")
+                        .IsUnique();
+
+                    b.ToTable("MatchActions");
+                });
 
             modelBuilder.Entity("CardDuel.ServerApi.Infrastructure.Models.MatchRecord", b =>
                 {
@@ -44,6 +184,9 @@ namespace CardDuel.ServerApi.Migrations
                     b.Property<int>("Mode")
                         .HasColumnType("integer");
 
+                    b.Property<DateTimeOffset?>("Player1DisconnectedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("Player1Id")
                         .IsRequired()
                         .HasColumnType("text");
@@ -54,6 +197,12 @@ namespace CardDuel.ServerApi.Migrations
                     b.Property<int?>("Player1RatingBefore")
                         .HasColumnType("integer");
 
+                    b.Property<string>("Player1ReconnectToken")
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset?>("Player2DisconnectedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("Player2Id")
                         .IsRequired()
                         .HasColumnType("text");
@@ -63,6 +212,9 @@ namespace CardDuel.ServerApi.Migrations
 
                     b.Property<int?>("Player2RatingBefore")
                         .HasColumnType("integer");
+
+                    b.Property<string>("Player2ReconnectToken")
+                        .HasColumnType("text");
 
                     b.Property<string>("RoomCode")
                         .IsRequired()
@@ -161,6 +313,38 @@ namespace CardDuel.ServerApi.Migrations
                         .IsUnique();
 
                     b.ToTable("Ratings");
+                });
+
+            modelBuilder.Entity("CardDuel.ServerApi.Infrastructure.Models.ReplayLog", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("text");
+
+                    b.Property<string>("ActionData")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("ActionNumber")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("ActionType")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<string>("MatchId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("PlayerId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("ReplayLogs");
                 });
 
             modelBuilder.Entity("CardDuel.ServerApi.Infrastructure.Models.UserAccount", b =>

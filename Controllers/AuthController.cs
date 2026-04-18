@@ -12,7 +12,7 @@ using CardDuel.ServerApi.Infrastructure.Models;
 namespace CardDuel.ServerApi.Controllers;
 
 [ApiController]
-[Route("api/auth")]
+[Route("api/v1/auth")]
 public sealed class AuthController(
     AppDbContext dbContext,
     IConfiguration configuration,
@@ -105,7 +105,7 @@ public sealed class AuthController(
             issuer: issuer,
             audience: audience,
             claims: claims,
-            expires: DateTime.UtcNow.AddHours(24),
+            expires: DateTime.UtcNow.AddHours(1),
             signingCredentials: credentials
         );
 

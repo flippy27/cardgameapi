@@ -5,7 +5,7 @@ using CardDuel.ServerApi.Infrastructure;
 namespace CardDuel.ServerApi.Controllers;
 
 [ApiController]
-[Route("api/health")]
+[Route("api/v1/health")]
 public sealed class HealthController(AppDbContext dbContext) : ControllerBase
 {
     [HttpGet]

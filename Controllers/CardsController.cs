@@ -5,7 +5,7 @@ using CardDuel.ServerApi.Services;
 namespace CardDuel.ServerApi.Controllers;
 
 [ApiController]
-[Route("api/cards")]
+[Route("api/v1/cards")]
 public sealed class CardsController(ICardCatalogService cardCatalogService) : ControllerBase
 {
     [HttpGet]

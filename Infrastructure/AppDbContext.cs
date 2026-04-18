@@ -10,6 +10,9 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<MatchRecord> Matches { get; set; } = null!;
     public DbSet<PlayerRating> Ratings { get; set; } = null!;
     public DbSet<ReplayLog> ReplayLogs { get; set; } = null!;
+    public DbSet<CardDefinition> Cards { get; set; } = null!;
+    public DbSet<AuditLog> AuditLogs { get; set; } = null!;
+    public DbSet<MatchAction> MatchActions { get; set; } = null!;
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -32,9 +35,14 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             e.HasIndex(x => new { x.UserId, x.DeckId }).IsUnique();
             e.Property(x => x.DeckId).HasMaxLength(128);
             e.Property(x => x.DisplayName).HasMaxLength(255);
-            e.Property(x => x.CardIds).HasConversion(
-                v => string.Join(",", v),
-                v => v.Split(",", StringSplitOptions.RemoveEmptyEntries).ToList());
+            e.Property(x => x.CardIds)
+                .HasConversion(
+                    v => string.Join(",", v),
+                    v => v.Split(",", StringSplitOptions.RemoveEmptyEntries).ToList())
+                .Metadata.SetValueComparer(new Microsoft.EntityFrameworkCore.ChangeTracking.ValueComparer<List<string>>(
+                    (c1, c2) => c1!.SequenceEqual(c2!),
+                    c => c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())),
+                    c => c.ToList()));
         });
 
         modelBuilder.Entity<MatchRecord>(e =>
@@ -52,6 +60,37 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             e.HasKey(x => x.Id);
             e.HasIndex(x => x.RatingValue).IsDescending();
             e.Property(x => x.Region).HasMaxLength(32).HasDefaultValue("global");
+        });
+
+        modelBuilder.Entity<CardDefinition>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => x.CardId).IsUnique();
+            e.Property(x => x.CardId).HasMaxLength(128);
+            e.Property(x => x.DisplayName).HasMaxLength(255);
+            e.Property(x => x.AbilitiesJson).HasColumnType("jsonb");
+        });
+
+        modelBuilder.Entity<AuditLog>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => x.UserId);
+            e.HasIndex(x => x.CreatedAt).IsDescending();
+            e.HasIndex(x => new { x.Resource, x.ResourceId });
+            e.Property(x => x.Action).HasMaxLength(64);
+            e.Property(x => x.Resource).HasMaxLength(64);
+            e.Property(x => x.ResourceId).HasMaxLength(255);
+            e.Property(x => x.IpAddress).HasMaxLength(45);
+            e.Property(x => x.Details).HasColumnType("jsonb");
+        });
+
+        modelBuilder.Entity<MatchAction>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => x.MatchId);
+            e.HasIndex(x => new { x.MatchId, x.ActionNumber }).IsUnique();
+            e.Property(x => x.ActionType).HasMaxLength(64);
+            e.Property(x => x.ActionData).HasColumnType("jsonb");
         });
     }
 }

@@ -6,7 +6,7 @@ namespace CardDuel.ServerApi.Controllers;
 
 [ApiController]
 [Authorize]
-[Route("api/replays")]
+[Route("api/v1/replays")]
 public sealed class ReplaysController(IReplayService replayService) : ControllerBase
 {
     [HttpGet("{matchId}")]

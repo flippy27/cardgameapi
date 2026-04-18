@@ -6,7 +6,7 @@ using CardDuel.ServerApi.Infrastructure;
 namespace CardDuel.ServerApi.Controllers;
 
 [ApiController]
-[Route("api/admin")]
+[Route("api/v1/admin")]
 [Authorize] // TODO: Add role-based [Authorize(Roles = "Admin")]
 public sealed class AdminController(AppDbContext dbContext, ILogger<AdminController> logger) : ControllerBase
 {

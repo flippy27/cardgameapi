@@ -7,7 +7,7 @@ namespace CardDuel.ServerApi.Controllers;
 
 [ApiController]
 [Authorize]
-[Route("api/tournaments")]
+[Route("api/v1/tournaments")]
 public sealed class TournamentsController(InMemoryTournamentStore tournamentStore) : ControllerBase
 {
     [HttpGet]

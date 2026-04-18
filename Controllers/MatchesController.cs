@@ -9,7 +9,7 @@ namespace CardDuel.ServerApi.Controllers;
 
 [ApiController]
 [Authorize]
-[Route("api/matches")]
+[Route("api/v1/matches")]
 public sealed class MatchesController(IMatchService matchService) : ControllerBase
 {
     [HttpGet]
@@ -59,6 +59,16 @@ public sealed class MatchesController(IMatchService matchService) : ControllerBa
         EnsurePlayer(request.PlayerId);
         return Ok(matchService.CompleteMatch(matchId, request.PlayerId, request.OpponentId,
             request.PlayerWon, request.DurationSeconds));
+    }
+
+    [HttpPost("{matchId}/actions")]
+    public ActionResult<PostActionsResponse> PostActions(string matchId, PostActionsRequest request)
+    {
+        if (request.Actions == null || request.Actions.Count == 0)
+            return Ok(new PostActionsResponse(matchId, 0, true, "No actions to process"));
+
+        EnsurePlayer(request.Actions[0].PlayerId);
+        return Ok(matchService.ProcessActions(matchId, request));
     }
 
     private void EnsurePlayer(string playerId)

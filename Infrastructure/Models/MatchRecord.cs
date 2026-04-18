@@ -18,4 +18,8 @@ public sealed class MatchRecord
     public int? Player1RatingAfter { get; set; }
     public int? Player2RatingBefore { get; set; }
     public int? Player2RatingAfter { get; set; }
+    public DateTimeOffset? Player1DisconnectedAt { get; set; }
+    public DateTimeOffset? Player2DisconnectedAt { get; set; }
+    public string? Player1ReconnectToken { get; set; }
+    public string? Player2ReconnectToken { get; set; }
 }

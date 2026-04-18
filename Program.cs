@@ -1,4 +1,6 @@
 using System.Text;
+using System.IO.Compression;
+using FluentValidation;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -7,19 +9,26 @@ using Serilog;
 using CardDuel.ServerApi.Hubs;
 using CardDuel.ServerApi.Services;
 using CardDuel.ServerApi.Infrastructure;
+using CardDuel.ServerApi.Contracts;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Logging
+// Logging with structured context
 builder.Host.UseSerilog((context, config) =>
 {
     config
         .MinimumLevel.Information()
-        .WriteTo.Console()
-        .WriteTo.File("logs/cardduel-.txt", rollingInterval: RollingInterval.Day);
+        .Enrich.FromLogContext()
+        .Enrich.WithMachineName()
+        .Enrich.WithThreadId()
+        .WriteTo.Console(outputTemplate: "[{Timestamp:yyyy-MM-dd HH:mm:ss}] [{Level:u3}] [{CorrelationId}] {Message:lj}{NewLine}{Exception}")
+        .WriteTo.File("logs/cardduel-.txt",
+            rollingInterval: RollingInterval.Day,
+            outputTemplate: "[{Timestamp:yyyy-MM-dd HH:mm:ss}] [{Level:u3}] [{CorrelationId}] {Message:lj}{NewLine}{Exception}");
 });
 
 builder.Services.AddControllers();
+builder.Services.AddValidatorsFromAssemblyContaining<PlayCardRequestValidator>();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
@@ -49,7 +58,12 @@ var dbConnection = builder.Configuration.GetConnectionString("DefaultConnection"
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(dbConnection));
 
-var signingKey = builder.Configuration["Jwt:SigningKey"] ?? throw new InvalidOperationException("Missing Jwt:SigningKey");
+var signingKey = builder.Configuration["Jwt:SigningKey"];
+if (string.IsNullOrWhiteSpace(signingKey))
+{
+    signingKey = Environment.GetEnvironmentVariable("JWT_SIGNING_KEY")
+        ?? throw new InvalidOperationException("Missing JWT_SIGNING_KEY env var or Jwt:SigningKey in config");
+}
 var issuer = builder.Configuration["Jwt:Issuer"] ?? "cardduel-server";
 var audience = builder.Configuration["Jwt:Audience"] ?? "cardduel-clients";
 
@@ -86,7 +100,30 @@ builder.Services
 
 builder.Services.AddAuthorization();
 
-var signalRBuilder = builder.Services.AddSignalR();
+builder.Services.AddResponseCompression(options =>
+{
+    options.EnableForHttps = true;
+});
+
+builder.Services.AddHealthChecks()
+    .AddNpgSql(dbConnection, name: "postgresql", timeout: TimeSpan.FromSeconds(5))
+    .AddRedis(builder.Configuration["SignalR:RedisConnectionString"] ?? "localhost:6379", name: "redis", timeout: TimeSpan.FromSeconds(5));
+
+builder.Services.AddCors(options =>
+    options.AddDefaultPolicy(builder =>
+        builder.WithOrigins("http://localhost:3000", "http://localhost:5173", "http://localhost:5000", "http://127.0.0.1:3000", "http://127.0.0.1:5173")
+               .AllowAnyMethod()
+               .AllowAnyHeader()
+               .AllowCredentials()));
+
+var signalRBuilder = builder.Services.AddSignalR(options =>
+{
+    options.HandshakeTimeout = TimeSpan.FromSeconds(5);
+    options.KeepAliveInterval = TimeSpan.FromSeconds(15);
+    options.ClientTimeoutInterval = TimeSpan.FromSeconds(30);
+    options.MaximumParallelInvocationsPerClient = 10;
+});
+
 if (builder.Configuration.GetValue<bool>("SignalR:UseRedisBackplane"))
 {
     var redisConnection = builder.Configuration["SignalR:RedisConnectionString"];
@@ -96,29 +133,59 @@ if (builder.Configuration.GetValue<bool>("SignalR:UseRedisBackplane"))
     }
 }
 
-builder.Services.AddSingleton<ICardCatalogService, InMemoryCardCatalogService>();
-builder.Services.AddSingleton<IDeckRepository, InMemoryDeckRepository>();
+builder.Services.AddScoped<ICardCatalogService, DbCardCatalogService>();
+builder.Services.AddScoped<IDeckRepository, DbDeckRepository>();
 builder.Services.AddSingleton<IMatchService, InMemoryMatchService>();
 builder.Services.AddSingleton<InMemoryTournamentStore>();
 builder.Services.AddScoped<IRatingService, EloRatingService>();
+builder.Services.AddScoped<IRatingDbService, DbRatingService>();
 builder.Services.AddScoped<IDeckValidationService, DeckValidationService>();
+builder.Services.AddScoped<IReconnectionService, ReconnectionService>();
+builder.Services.AddScoped<IAuditService, AuditService>();
+builder.Services.AddScoped<IReplayPersistenceService, ReplayPersistenceService>();
+builder.Services.AddScoped<IReplayValidationService, ReplayValidationService>();
 
 var app = builder.Build();
 
-// Migrate database
+// Migrate database and seed
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     db.Database.Migrate();
+    CardCatalogSeeder.SeedCards(db);
 }
 
 app.UseSwagger();
 app.UseSwaggerUI();
+app.UseMiddleware<CorrelationIdMiddleware>();
+app.UseMiddleware<MetricsMiddleware>();
+app.UseMiddleware<RequestResponseLoggingMiddleware>();
+app.UseMiddleware<RateLimitMiddleware>();
+app.UseMiddleware<AuditLoggingMiddleware>();
 app.UseMiddleware<GlobalExceptionHandlerMiddleware>();
+app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
+app.UseResponseCompression();
 
 app.MapControllers();
 app.MapHub<MatchHub>("/hubs/match");
+app.MapHealthChecks("/api/v1/health");
+
+// Prometheus metrics endpoint (no auth required)
+app.MapGet("/metrics", () =>
+{
+    return Results.Text(PrometheusMetricsService.ExportMetrics(), "text/plain");
+});
+
+var logger = app.Services.GetRequiredService<ILogger<Program>>();
+logger.LogInformation("═══════════════════════════════════════════════════════════");
+logger.LogInformation("🎮 CardDuel Server API RUNNING");
+logger.LogInformation("═══════════════════════════════════════════════════════════");
+logger.LogInformation("📍 API Base URL: http://localhost:5000");
+logger.LogInformation("📚 Swagger Docs: http://localhost:5000/swagger");
+logger.LogInformation("🎯 Match Hub: ws://localhost:5000/hubs/match (SignalR)");
+logger.LogInformation("💚 Health Check: http://localhost:5000/api/v1/health");
+logger.LogInformation("═══════════════════════════════════════════════════════════");
 
 app.Run();

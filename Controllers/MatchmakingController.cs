@@ -8,7 +8,7 @@ namespace CardDuel.ServerApi.Controllers;
 
 [ApiController]
 [Authorize]
-[Route("api/matchmaking")]
+[Route("api/v1/matchmaking")]
 public sealed class MatchmakingController(IMatchService matchService) : ControllerBase
 {
     [HttpPost("private")]

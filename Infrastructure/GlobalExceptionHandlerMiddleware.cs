@@ -17,16 +17,18 @@ public sealed class GlobalExceptionHandlerMiddleware(RequestDelegate next, ILogg
         }
     }
 
-    private static Task HandleExceptionAsync(HttpContext context, Exception exception)
+    private Task HandleExceptionAsync(HttpContext context, Exception exception)
     {
         context.Response.ContentType = "application/json";
+        var isDevelopment = Environment.GetEnvironmentVariable("ASPNETCORE_ENVIRONMENT") == "Development";
+        var correlationId = context.Items["CorrelationId"]?.ToString() ?? "unknown";
 
         var (statusCode, message) = exception switch
         {
-            UnauthorizedAccessException => (StatusCodes.Status401Unauthorized, exception.Message),
-            InvalidOperationException => (StatusCodes.Status400BadRequest, exception.Message),
+            UnauthorizedAccessException => (StatusCodes.Status401Unauthorized, "Unauthorized"),
+            InvalidOperationException => (StatusCodes.Status400BadRequest, isDevelopment ? exception.Message : "Invalid operation"),
             KeyNotFoundException => (StatusCodes.Status404NotFound, "Resource not found"),
-            ArgumentException => (StatusCodes.Status400BadRequest, exception.Message),
+            ArgumentException => (StatusCodes.Status400BadRequest, isDevelopment ? exception.Message : "Invalid argument"),
             _ => (StatusCodes.Status500InternalServerError, "An unexpected error occurred")
         };
 
@@ -34,7 +36,9 @@ public sealed class GlobalExceptionHandlerMiddleware(RequestDelegate next, ILogg
         return context.Response.WriteAsJsonAsync(new ApiErrorResponse(
             code: statusCode,
             message: message,
-            timestamp: DateTimeOffset.UtcNow
+            timestamp: DateTimeOffset.UtcNow,
+            correlationId: correlationId,
+            details: isDevelopment ? exception.StackTrace : null
         ));
     }
 }
@@ -43,4 +47,5 @@ public sealed record ApiErrorResponse(
     int code,
     string message,
     DateTimeOffset timestamp,
+    string correlationId,
     string? details = null);

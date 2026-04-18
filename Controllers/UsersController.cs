@@ -9,7 +9,7 @@ namespace CardDuel.ServerApi.Controllers;
 
 [ApiController]
 [Authorize]
-[Route("api/users")]
+[Route("api/v1/users")]
 public sealed class UsersController(AppDbContext dbContext) : ControllerBase
 {
     [HttpGet("{playerId}/profile")]

@@ -85,3 +85,23 @@ public sealed record MatchCompletionResponse(
     string MatchId,
     bool Recorded,
     string Message);
+
+public sealed record MatchActionDto(
+    int ActionNumber,
+    int Sequence,
+    DateTime Timestamp,
+    [property: Required] string PlayerId,
+    [property: Required] string ActionType,
+    object? Data);
+
+public sealed record PostActionsRequest(
+    [property: Required] string MatchId,
+    [property: Required] List<MatchActionDto> Actions,
+    int GlobalSequence,
+    DateTime Timestamp);
+
+public sealed record PostActionsResponse(
+    string MatchId,
+    int ActionsReceived,
+    bool Success,
+    string Message);

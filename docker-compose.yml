@@ -1,31 +1,123 @@
-version: '3.8'
-
 services:
-  postgres:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_DB: cardduel
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+  nginx:
+    image: nginx:alpine
+    container_name: cardduel-nginx
     ports:
-      - "5433:5432"
+      - "80:80"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      api:
+        condition: service_healthy
+      prometheus:
+        condition: service_started
+      grafana:
+        condition: service_started
+    networks:
+      - cardduel-network
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: cardduel-api
+    environment:
+      - ASPNETCORE_ENVIRONMENT=Production
+      - JWT_SIGNING_KEY=${JWT_SIGNING_KEY:-dev-key-minimum-32-characters-long-xxxxxxxxxx}
+      - ConnectionStrings__DefaultConnection=Server=postgres;Port=5432;Database=cardduel;User Id=postgres;Password=${DB_PASSWORD:-postgres}
+      - SignalR__RedisConnectionString=redis:6379
+      - SignalR__UseRedisBackplane=true
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    expose:
+      - "8080"
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:8080/api/v1/health"]
       interval: 10s
       timeout: 5s
+      retries: 3
+      start_period: 15s
+    networks:
+      - cardduel-network
+
+  postgres:
+    image: postgres:16-alpine
+    container_name: cardduel-postgres
+    environment:
+      - POSTGRES_DB=cardduel
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=${DB_PASSWORD:-postgres}
+    volumes:
+      - cardduel-postgres-data:/var/lib/postgresql/data
+    expose:
+      - "5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 3s
       retries: 5
+    networks:
+      - cardduel-network
 
   redis:
     image: redis:7-alpine
-    ports:
-      - "6379:6379"
+    container_name: cardduel-redis
+    expose:
+      - "6379"
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
-      interval: 10s
-      timeout: 5s
+      interval: 5s
+      timeout: 3s
       retries: 5
+    networks:
+      - cardduel-network
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: cardduel-prometheus
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - cardduel-prometheus-data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=30d'
+      - '--web.external-url=http://localhost/prometheus/'
+      - '--web.route-prefix=/'
+    expose:
+      - "9090"
+    depends_on:
+      - api
+    networks:
+      - cardduel-network
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: cardduel-grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - cardduel-grafana-data:/var/lib/grafana
+      - ./grafana/grafana.ini:/etc/grafana/grafana.ini:ro
+      - ./grafana/provisioning/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./grafana/provisioning/dashboards:/etc/grafana/provisioning/dashboards:ro
+      - ./grafana/dashboards:/etc/grafana/dashboards:ro
+    expose:
+      - "3000"
+    depends_on:
+      - prometheus
+    networks:
+      - cardduel-network
+
+networks:
+  cardduel-network:
+    driver: bridge
 
 volumes:
-  postgres_data:
+  cardduel-postgres-data:
+  cardduel-prometheus-data:
+  cardduel-grafana-data:

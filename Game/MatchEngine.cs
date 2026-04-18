@@ -188,6 +188,9 @@ public sealed class MatchEngine
     public int? WinnerSeatIndex { get; private set; }
     public bool DuelEnded { get; private set; }
     public DateTimeOffset UpdatedAt { get; private set; } = DateTimeOffset.UtcNow;
+    public string RoomCode => _roomCode;
+    public QueueMode Mode => _mode;
+    public string MatchId => _matchId;
 
     public IReadOnlyList<RuntimeSeatState> Seats => _seats;
 

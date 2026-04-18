@@ -8,7 +8,7 @@ namespace CardDuel.ServerApi.Controllers;
 
 [ApiController]
 [Authorize]
-[Route("api/decks")]
+[Route("api/v1/decks")]
 public sealed class DecksController(
     IDeckRepository deckRepository,
     ICardCatalogService cardCatalogService,
