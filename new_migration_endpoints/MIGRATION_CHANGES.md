@@ -250,6 +250,14 @@ Shared enums:
 - List all target selector types (0-4 with names)
 - Returns: Array of selector definitions
 
+**GET** `/api/v1/cards/skill-types`
+- List all skill types (0-4 with names)
+- Returns: Array of skill type definitions
+
+**GET** `/api/v1/cards/skills`
+- List all skills from all cards
+- Returns: Array with skillId, displayName, cardId, triggerKind, targetSelectorKind, effectCount
+
 ---
 
 ## ENUMS MAPPING
@@ -303,6 +311,15 @@ Shared enums:
 | 2 | BacklineFirst |
 | 3 | AllEnemies |
 | 4 | LowestHealthAlly |
+
+### SkillType (int, nullable in AbilityDefinition)
+| Value | Name | Description |
+|-------|------|-------------|
+| 0 | Defensive | Armor, shield, evasion, reflection, dodge |
+| 1 | Offensive | Poison, stun, leech, mana_burn, enrage |
+| 2 | Equipable | Weapon/armor cards that grant abilities |
+| 3 | Utility | Regenerate, charge, taunt |
+| 4 | Modifier | Change attack behavior (cleave, range, etc) |
 
 ### EffectKind (int) - 27 Total Types
 | Value | Name | Description |
@@ -495,31 +512,33 @@ curl -X GET http://localhost:5000/api/v1/cards/test_card_1
 
 ---
 
-# Sprint 7: COMPLETE ✅
+# Sprint 7: COMPLETE ✅ (WITH SKILLS)
 
 **Total Files Created:** 6
-**Total Files Modified:** 6  
-**Total Endpoints Added:** 20 (10 admin + 10 public)
+**Total Files Modified:** 8  
+**Total Endpoints Added:** 22 (10 admin + 12 public)
 **Total Test Methods:** 11
 **Effects Supported:** 27 (all from game)
+**Skills System:** ✅ Full support with 5 skill types
 
 ---
 
-## STATUS: FULL IMPLEMENTATION COMPLETE ✅
+## STATUS: FULL IMPLEMENTATION COMPLETE ✅ (+ SKILLS)
 
 ### Completed ✅
 
 **Models & Database:**
-- [x] Create AbilityDefinition model (FK to CardDefinition)
+- [x] Create AbilityDefinition model (FK to CardDefinition, +SkillType)
 - [x] Create EffectDefinition model (FK to AbilityDefinition)
 - [x] Expand CardDefinition model (+8 properties)
 - [x] Update AppDbContext with new DbSets and Fluent API
 - [x] Create EF Core migration (20260419170327_AddAbilitiesAndEffectsModels)
 
 **Enums:**
-- [x] Consolidate enums into MatchEngine.cs (CardType, CardRarity, CardFaction, UnitType)
+- [x] Consolidate enums into MatchEngine.cs (CardType, CardRarity, CardFaction, UnitType, **SkillType**)
 - [x] Expand EffectKind enum from 5 → 27 types (all Unity effects covered)
-- [x] Update ServerCardDefinition record to include new properties
+- [x] Update ServerCardDefinition and ServerAbilityDefinition records
+- [x] SkillType enum (0-4): Defensive, Offensive, Equipable, Utility, Modifier
 
 **API:**
 - [x] Create CardDtos.cs (8 DTOs + responses)

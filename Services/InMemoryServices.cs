@@ -68,33 +68,33 @@ public sealed class InMemoryCardCatalogService : ICardCatalogService
 
     private static Dictionary<string, ServerCardDefinition> BuildCatalog()
     {
-        ServerAbilityDefinition ability(string id, TriggerKind trigger, TargetSelectorKind selector, params ServerEffectDefinition[] effects) =>
-            new(id, trigger, selector, effects);
+        ServerAbilityDefinition ability(string id, string displayName, TriggerKind trigger, TargetSelectorKind selector, params ServerEffectDefinition[] effects) =>
+            new(id, displayName, trigger, selector, effects);
 
         return new[]
         {
             new ServerCardDefinition("ember_vanguard", "Ember Vanguard", "", 2, 3, 3, 0, 0, 0, 0, null, AllowedRow.FrontOnly, TargetSelectorKind.FrontlineFirst, 1, Array.Empty<ServerAbilityDefinition>()),
             new ServerCardDefinition("ember_archer", "Ember Archer", "", 2, 2, 2, 0, 0, 0, 0, null, AllowedRow.BackOnly, TargetSelectorKind.BacklineFirst, 1, Array.Empty<ServerAbilityDefinition>()),
             new ServerCardDefinition("ember_burnseer", "Burnseer", "", 3, 2, 3, 0, 0, 0, 0, null, AllowedRow.BackOnly, TargetSelectorKind.BacklineFirst, 1,
-                new[] { ability("hero_ping", TriggerKind.OnTurnEnd, TargetSelectorKind.Self, new ServerEffectDefinition(EffectKind.HitHero, 2)) }),
+                new[] { ability("hero_ping", "Hero Ping", TriggerKind.OnTurnEnd, TargetSelectorKind.Self, new ServerEffectDefinition(EffectKind.HitHero, 2)) }),
             new ServerCardDefinition("tidal_priest", "Tidal Priest", "", 2, 1, 3, 0, 0, 0, 0, null, AllowedRow.BackOnly, TargetSelectorKind.BacklineFirst, 1,
-                new[] { ability("battle_heal", TriggerKind.OnTurnEnd, TargetSelectorKind.LowestHealthAlly, new ServerEffectDefinition(EffectKind.Heal, 2)) }),
+                new[] { ability("battle_heal", "Battle Heal", TriggerKind.OnTurnEnd, TargetSelectorKind.LowestHealthAlly, new ServerEffectDefinition(EffectKind.Heal, 2)) }),
             new ServerCardDefinition("tidal_lancer", "Tidal Lancer", "", 2, 3, 2, 0, 0, 0, 0, null, AllowedRow.FrontOnly, TargetSelectorKind.FrontlineFirst, 1, Array.Empty<ServerAbilityDefinition>()),
             new ServerCardDefinition("tidal_sniper", "Tidal Sniper", "", 3, 3, 2, 0, 0, 0, 0, null, AllowedRow.BackOnly, TargetSelectorKind.BacklineFirst, 1, Array.Empty<ServerAbilityDefinition>()),
             new ServerCardDefinition("grove_guardian", "Grove Guardian", "", 3, 2, 5, 1, 0, 0, 0, null, AllowedRow.FrontOnly, TargetSelectorKind.FrontlineFirst, 1, Array.Empty<ServerAbilityDefinition>()),
             new ServerCardDefinition("grove_shaper", "Grove Shaper", "", 3, 1, 4, 0, 0, 0, 0, null, AllowedRow.BackOnly, TargetSelectorKind.BacklineFirst, 1,
-                new[] { ability("battle_buff", TriggerKind.OnTurnStart, TargetSelectorKind.Self, new ServerEffectDefinition(EffectKind.BuffAttack, 1)) }),
+                new[] { ability("battle_buff", "Battle Buff", TriggerKind.OnTurnStart, TargetSelectorKind.Self, new ServerEffectDefinition(EffectKind.BuffAttack, 1)) }),
             new ServerCardDefinition("grove_raincaller", "Raincaller", "", 2, 1, 3, 0, 0, 0, 0, null, AllowedRow.BackOnly, TargetSelectorKind.BacklineFirst, 1,
-                new[] { ability("ally_heal", TriggerKind.OnTurnEnd, TargetSelectorKind.LowestHealthAlly, new ServerEffectDefinition(EffectKind.Heal, 2)) }),
+                new[] { ability("ally_heal", "Ally Heal", TriggerKind.OnTurnEnd, TargetSelectorKind.LowestHealthAlly, new ServerEffectDefinition(EffectKind.Heal, 2)) }),
             new ServerCardDefinition("alloy_bulwark", "Alloy Bulwark", "", 3, 2, 4, 0, 0, 0, 0, null, AllowedRow.FrontOnly, TargetSelectorKind.FrontlineFirst, 1,
-                new[] { ability("armor_on_play", TriggerKind.OnPlay, TargetSelectorKind.Self, new ServerEffectDefinition(EffectKind.GainArmor, 2)) }),
+                new[] { ability("armor_on_play", "Armor On Play", TriggerKind.OnPlay, TargetSelectorKind.Self, new ServerEffectDefinition(EffectKind.GainArmor, 2)) }),
             new ServerCardDefinition("alloy_ballista", "Alloy Ballista", "", 4, 4, 2, 0, 0, 0, 0, null, AllowedRow.BackOnly, TargetSelectorKind.BacklineFirst, 1, Array.Empty<ServerAbilityDefinition>()),
             new ServerCardDefinition("alloy_hoplite", "Alloy Hoplite", "", 2, 2, 3, 0, 0, 0, 0, null, AllowedRow.FrontOnly, TargetSelectorKind.FrontlineFirst, 1, Array.Empty<ServerAbilityDefinition>()),
             new ServerCardDefinition("void_stalker", "Void Stalker", "", 2, 3, 2, 0, 0, 0, 0, null, AllowedRow.FrontOnly, TargetSelectorKind.FrontlineFirst, 1, Array.Empty<ServerAbilityDefinition>()),
             new ServerCardDefinition("void_caller", "Void Caller", "", 4, 2, 3, 0, 0, 0, 0, null, AllowedRow.BackOnly, TargetSelectorKind.FrontlineFirst, 1,
-                new[] { ability("splash", TriggerKind.OnBattlePhase, TargetSelectorKind.AllEnemies, new ServerEffectDefinition(EffectKind.Damage, 1)) }),
+                new[] { ability("splash", "Splash", TriggerKind.OnBattlePhase, TargetSelectorKind.AllEnemies, new ServerEffectDefinition(EffectKind.Damage, 1)) }),
             new ServerCardDefinition("void_magus", "Void Magus", "", 4, 3, 4, 0, 0, 0, 0, null, AllowedRow.BackOnly, TargetSelectorKind.FrontlineFirst, 1,
-                new[] { ability("self_buff", TriggerKind.OnTurnStart, TargetSelectorKind.Self, new ServerEffectDefinition(EffectKind.BuffAttack, 1)) }),
+                new[] { ability("self_buff", "Self Buff", TriggerKind.OnTurnStart, TargetSelectorKind.Self, new ServerEffectDefinition(EffectKind.BuffAttack, 1)) }),
             new ServerCardDefinition("ember_colossus", "Ember Colossus", "", 5, 5, 6, 0, 0, 0, 0, null, AllowedRow.FrontOnly, TargetSelectorKind.FrontlineFirst, 1, Array.Empty<ServerAbilityDefinition>()),
             new ServerCardDefinition("tidal_waveblade", "Waveblade", "", 1, 2, 1, 0, 0, 0, 0, null, AllowedRow.BackOnly, TargetSelectorKind.BacklineFirst, 1, Array.Empty<ServerAbilityDefinition>()),
             new ServerCardDefinition("grove_myr", "Grove Myr", "", 1, 1, 2, 0, 0, 0, 0, null, AllowedRow.FrontOnly, TargetSelectorKind.FrontlineFirst, 1, Array.Empty<ServerAbilityDefinition>())

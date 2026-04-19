@@ -429,4 +429,49 @@ public sealed class CardsController(ICardCatalogService cardCatalogService, ICar
         }
         return Ok(selectors);
     }
+
+    [HttpGet("skill-types")]
+    [AllowAnonymous]
+    public IActionResult GetSkillTypeDefinitions()
+    {
+        var types = new List<object>();
+        for (int i = 0; i <= 4; i++)
+        {
+            types.Add(new
+            {
+                type = i,
+                name = ((Game.SkillType)i).ToString()
+            });
+        }
+        return Ok(types);
+    }
+
+    [HttpGet("skills")]
+    [AllowAnonymous]
+    public IActionResult GetAllSkills()
+    {
+        var allCards = cardCatalogService.GetAll().Values.ToList();
+        var skills = new List<object>();
+
+        foreach (var card in allCards)
+        {
+            if (card.Abilities.Count == 0) continue;
+
+            foreach (var ability in card.Abilities)
+            {
+                skills.Add(new
+                {
+                    skillId = ability.AbilityId,
+                    displayName = ability.DisplayName,
+                    cardId = card.CardId,
+                    triggerKind = (int)ability.Trigger,
+                    targetSelectorKind = (int)ability.Selector,
+                    effectCount = ability.Effects.Count
+                });
+            }
+        }
+
+        return Ok(skills);
+    }
+
 }

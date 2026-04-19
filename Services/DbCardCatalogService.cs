@@ -64,6 +64,7 @@ public sealed class DbCardCatalogService(AppDbContext dbContext) : ICardCatalogS
             var items = JsonSerializer.Deserialize<List<AbilityJson>>(json, options) ?? new();
             return items.Select(a => new ServerAbilityDefinition(
                 a.AbilityId,
+                a.DisplayName ?? a.AbilityId,
                 (TriggerKind)a.Trigger,
                 (TargetSelectorKind)a.Selector,
                 a.Effects.Select(e => new ServerEffectDefinition((EffectKind)e.Kind, e.Amount)).ToList()
@@ -75,6 +76,6 @@ public sealed class DbCardCatalogService(AppDbContext dbContext) : ICardCatalogS
         }
     }
 
-    private sealed record AbilityJson(string AbilityId, int Trigger, int Selector, List<EffectJson> Effects);
+    private sealed record AbilityJson(string AbilityId, string? DisplayName, int Trigger, int Selector, List<EffectJson> Effects);
     private sealed record EffectJson(int Kind, int Amount);
 }

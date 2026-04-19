@@ -8,6 +8,7 @@ public sealed class AbilityDefinition
     public string Description { get; set; } = string.Empty;
     public int TriggerKind { get; set; } // TriggerKind enum: OnPlay, OnTurnStart, OnTurnEnd, OnBattlePhase
     public int TargetSelectorKind { get; set; } // TargetSelectorKind enum
+    public int? SkillType { get; set; } // SkillType enum: Defensive, Offensive, Equipable, Utility, Modifier (nullable)
 
     // Foreign key
     public string CardDefinitionId { get; set; } = string.Empty;

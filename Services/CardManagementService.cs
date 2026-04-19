@@ -107,6 +107,7 @@ public sealed class CardManagementService(AppDbContext db) : ICardManagementServ
             Description = request.Description,
             TriggerKind = request.TriggerKind,
             TargetSelectorKind = request.TargetSelectorKind,
+            SkillType = request.SkillType,
             CardDefinitionId = card.Id
         };
 
@@ -140,6 +141,7 @@ public sealed class CardManagementService(AppDbContext db) : ICardManagementServ
         if (request.Description != null) ability.Description = request.Description;
         if (request.TriggerKind.HasValue) ability.TriggerKind = request.TriggerKind.Value;
         if (request.TargetSelectorKind.HasValue) ability.TargetSelectorKind = request.TargetSelectorKind.Value;
+        if (request.SkillType.HasValue) ability.SkillType = request.SkillType.Value;
 
         ability.UpdatedAt = DateTimeOffset.UtcNow;
 
@@ -234,7 +236,7 @@ public sealed class CardManagementService(AppDbContext db) : ICardManagementServ
 
     private static AbilityDto MapToDto(AbilityDefinition ability) =>
         new(ability.Id, ability.AbilityId, ability.DisplayName, ability.Description, ability.TriggerKind,
-            ability.TargetSelectorKind, ability.Effects.OrderBy(e => e.Sequence).Select(MapToDto).ToList());
+            ability.TargetSelectorKind, ability.SkillType, ability.Effects.OrderBy(e => e.Sequence).Select(MapToDto).ToList());
 
     private static EffectDto MapToDto(EffectDefinition effect) =>
         new(effect.Id, effect.EffectKind, effect.Amount, effect.Sequence);

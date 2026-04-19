@@ -46,6 +46,15 @@ public enum UnitType
     Magic = 2
 }
 
+public enum SkillType
+{
+    Defensive = 0,
+    Offensive = 1,
+    Equipable = 2,
+    Utility = 3,
+    Modifier = 4
+}
+
 public enum AllowedRow
 {
     FrontOnly = 0,
@@ -112,6 +121,7 @@ public sealed record ServerEffectDefinition(EffectKind Kind, int Amount);
 
 public sealed record ServerAbilityDefinition(
     string AbilityId,
+    string DisplayName,
     TriggerKind Trigger,
     TargetSelectorKind Selector,
     IReadOnlyList<ServerEffectDefinition> Effects);

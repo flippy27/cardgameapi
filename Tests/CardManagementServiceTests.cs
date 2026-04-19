@@ -205,6 +205,7 @@ public sealed class CardManagementServiceTests : IAsyncLifetime
             "An ability",
             0,
             0,
+            null,
             new List<CreateEffectRequest>
             {
                 new(0, 5, 0)
@@ -250,6 +251,7 @@ public sealed class CardManagementServiceTests : IAsyncLifetime
             "",
             0,
             0,
+            null,
             new List<CreateEffectRequest>
             {
                 new(0, 3, 0)
@@ -297,6 +299,7 @@ public sealed class CardManagementServiceTests : IAsyncLifetime
             "",
             0,
             0,
+            null,
             new List<CreateEffectRequest>
             {
                 new(0, 1, 0)
@@ -340,6 +343,7 @@ public sealed class CardManagementServiceTests : IAsyncLifetime
             "",
             0,
             0,
+            null,
             new List<CreateEffectRequest>
             {
                 new(0, 1, 0)

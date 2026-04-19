@@ -66,6 +66,7 @@ public sealed record AbilityDto(
     string Description,
     int TriggerKind,
     int TargetSelectorKind,
+    int? SkillType,
     List<EffectDto> Effects);
 
 public sealed record CreateAbilityRequest(
@@ -74,13 +75,15 @@ public sealed record CreateAbilityRequest(
     string Description,
     [property: Range(0, 3)] int TriggerKind,
     [property: Range(0, 4)] int TargetSelectorKind,
+    int? SkillType,
     [property: Required] List<CreateEffectRequest> Effects);
 
 public sealed record UpdateAbilityRequest(
     string? DisplayName,
     string? Description,
     int? TriggerKind,
-    int? TargetSelectorKind);
+    int? TargetSelectorKind,
+    int? SkillType);
 
 // ===== Effect DTOs =====
 
