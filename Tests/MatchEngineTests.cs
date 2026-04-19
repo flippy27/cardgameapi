@@ -9,7 +9,7 @@ public class MatchEngineTests
     private ServerCardDefinition CreateCard(string id, string name, int mana = 2, int attack = 2, int health = 2)
     {
         return new ServerCardDefinition(
-            id, name, mana, attack, health, 0, AllowedRow.Flexible, TargetSelectorKind.FrontlineFirst, Array.Empty<ServerAbilityDefinition>());
+            id, name, "", mana, attack, health, 0, 0, 0, 0, null, AllowedRow.Flexible, TargetSelectorKind.FrontlineFirst, 1, Array.Empty<ServerAbilityDefinition>());
     }
 
     [Fact]

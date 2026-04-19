@@ -1,0 +1,14 @@
+{
+  "abilityId": "test_ability_example",
+  "displayName": "Example Ability",
+  "description": "This ability deals damage on play",
+  "triggerKind": 0,
+  "targetSelectorKind": 1,
+  "effects": [
+    {
+      "effectKind": 0,
+      "amount": 3,
+      "sequence": 0
+    }
+  ]
+}

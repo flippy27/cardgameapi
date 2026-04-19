@@ -14,6 +14,38 @@ public enum MatchPhase
     Abandoned = 4
 }
 
+public enum CardType
+{
+    Unit = 0,
+    Utility = 1,
+    Equipment = 2,
+    Spell = 3
+}
+
+public enum CardRarity
+{
+    Common = 0,
+    Rare = 1,
+    Epic = 2,
+    Legendary = 3
+}
+
+public enum CardFaction
+{
+    Ember = 0,
+    Tidal = 1,
+    Grove = 2,
+    Alloy = 3,
+    Void = 4
+}
+
+public enum UnitType
+{
+    Melee = 0,
+    Ranged = 1,
+    Magic = 2
+}
+
 public enum AllowedRow
 {
     FrontOnly = 0,
@@ -44,7 +76,29 @@ public enum EffectKind
     Heal = 1,
     GainArmor = 2,
     BuffAttack = 3,
-    HitHero = 4
+    HitHero = 4,
+    Stun = 5,
+    Poison = 6,
+    Leech = 7,
+    Evasion = 8,
+    Shield = 9,
+    Reflection = 10,
+    Dodge = 11,
+    Enrage = 12,
+    ManaBurn = 13,
+    Regenerate = 14,
+    Execute = 15,
+    DiagonalAttack = 16,
+    Fly = 17,
+    Armor = 18,
+    Chain = 19,
+    Charge = 20,
+    Cleave = 21,
+    LastStand = 22,
+    MeleeRange = 23,
+    Ricochet = 24,
+    Taunt = 25,
+    Trample = 26
 }
 
 public enum BoardSlot
@@ -65,12 +119,18 @@ public sealed record ServerAbilityDefinition(
 public sealed record ServerCardDefinition(
     string CardId,
     string DisplayName,
+    string Description,
     int ManaCost,
     int Attack,
     int Health,
     int Armor,
+    int CardType,
+    int CardRarity,
+    int CardFaction,
+    int? UnitType,
     AllowedRow AllowedRow,
     TargetSelectorKind DefaultAttackSelector,
+    int TurnsUntilCanAttack,
     IReadOnlyList<ServerAbilityDefinition> Abilities);
 
 public sealed record RuntimeHandCard(string RuntimeHandKey, ServerCardDefinition Definition);

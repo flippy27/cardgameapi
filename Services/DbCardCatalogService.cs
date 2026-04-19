@@ -23,12 +23,18 @@ public sealed class DbCardCatalogService(AppDbContext dbContext) : ICardCatalogS
             var def = new ServerCardDefinition(
                 card.CardId,
                 card.DisplayName,
+                card.Description,
                 card.ManaCost,
                 card.Attack,
                 card.Health,
                 card.Armor,
+                card.CardType,
+                card.CardRarity,
+                card.CardFaction,
+                card.UnitType,
                 (AllowedRow)card.AllowedRow,
                 (TargetSelectorKind)card.DefaultAttackSelector,
+                card.TurnsUntilCanAttack,
                 abilities
             );
             _catalog[card.CardId] = def;

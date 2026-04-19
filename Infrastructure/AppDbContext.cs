@@ -11,6 +11,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<PlayerRating> Ratings { get; set; } = null!;
     public DbSet<ReplayLog> ReplayLogs { get; set; } = null!;
     public DbSet<CardDefinition> Cards { get; set; } = null!;
+    public DbSet<AbilityDefinition> Abilities { get; set; } = null!;
+    public DbSet<EffectDefinition> Effects { get; set; } = null!;
     public DbSet<AuditLog> AuditLogs { get; set; } = null!;
     public DbSet<MatchAction> MatchActions { get; set; } = null!;
 
@@ -68,7 +70,25 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             e.HasIndex(x => x.CardId).IsUnique();
             e.Property(x => x.CardId).HasMaxLength(128);
             e.Property(x => x.DisplayName).HasMaxLength(255);
+            e.Property(x => x.Description).HasMaxLength(1024);
             e.Property(x => x.AbilitiesJson).HasColumnType("jsonb");
+            e.HasMany(x => x.Abilities).WithOne(a => a.CardDefinition).HasForeignKey(a => a.CardDefinitionId);
+        });
+
+        modelBuilder.Entity<AbilityDefinition>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.CardDefinitionId, x.AbilityId }).IsUnique();
+            e.Property(x => x.AbilityId).HasMaxLength(128);
+            e.Property(x => x.DisplayName).HasMaxLength(255);
+            e.Property(x => x.Description).HasMaxLength(512);
+            e.HasMany(x => x.Effects).WithOne(ef => ef.AbilityDefinition).HasForeignKey(ef => ef.AbilityDefinitionId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<EffectDefinition>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.AbilityDefinitionId, x.Sequence }).IsUnique();
         });
 
         modelBuilder.Entity<AuditLog>(e =>

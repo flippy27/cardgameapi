@@ -29,6 +29,7 @@ builder.Host.UseSerilog((context, config) =>
 
 builder.Services.AddControllers();
 builder.Services.AddValidatorsFromAssemblyContaining<PlayCardRequestValidator>();
+builder.Services.AddValidatorsFromAssemblyContaining<CreateCardRequestValidator>();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
@@ -134,6 +135,7 @@ if (builder.Configuration.GetValue<bool>("SignalR:UseRedisBackplane"))
 }
 
 builder.Services.AddScoped<ICardCatalogService, DbCardCatalogService>();
+builder.Services.AddScoped<ICardManagementService, CardManagementService>();
 builder.Services.AddScoped<IDeckRepository, DbDeckRepository>();
 builder.Services.AddSingleton<IMatchService, InMemoryMatchService>();
 builder.Services.AddSingleton<InMemoryTournamentStore>();
