@@ -200,10 +200,10 @@ var logger = app.Services.GetRequiredService<ILogger<Program>>();
 logger.LogInformation("═══════════════════════════════════════════════════════════");
 logger.LogInformation("🎮 CardDuel Server API RUNNING");
 logger.LogInformation("═══════════════════════════════════════════════════════════");
-logger.LogInformation("📍 API Base URL: http://0.0.0.0:5000");
+logger.LogInformation("📍 API Base URL: http://0.0.0.0:5000 (or ASPNETCORE_URLS)");
 logger.LogInformation("📚 Swagger Docs: http://0.0.0.0:5000/swagger");
 logger.LogInformation("🎯 Match Hub: ws://0.0.0.0:5000/hubs/match (SignalR)");
 logger.LogInformation("💚 Health Check: http://0.0.0.0:5000/api/v1/health");
 logger.LogInformation("═══════════════════════════════════════════════════════════");
 
-app.Run("http://0.0.0.0:5000");
+app.Run();
