@@ -1,13 +1,13 @@
 -- Clear existing data (respect foreign keys)
-DELETE FROM "CardAbilities";
-DELETE FROM "Effects";
-DELETE FROM "Abilities";
-DELETE FROM "Decks";
-DELETE FROM "Cards";
-DELETE FROM "Users";
+DELETE FROM card_abilities;
+DELETE FROM effects;
+DELETE FROM abilities;
+DELETE FROM decks;
+DELETE FROM cards;
+DELETE FROM users;
 
 -- Insert 10 abilities from cardgame reference
-INSERT INTO "Abilities" ("Id", "AbilityId", "DisplayName", "Description", "TriggerKind", "TargetSelectorKind", "CreatedAt") VALUES
+INSERT INTO abilities (id, ability_id, display_name, description, trigger_kind, target_selector_kind, created_at) VALUES
 ('ability-1', 'armor', 'Armor', 'Absorbs incoming damage before health is reduced', 0, 4, NOW()),
 ('ability-2', 'shield', 'Shield', 'Absorbs one full attack (divine shield)', 0, 4, NOW()),
 ('ability-3', 'fly', 'Fly', 'Only flying units can attack this card', 0, 4, NOW()),
@@ -20,7 +20,7 @@ INSERT INTO "Abilities" ("Id", "AbilityId", "DisplayName", "Description", "Trigg
 ('ability-10', 'taunt', 'Taunt', 'All enemy attacks must target this card if alive', 0, 4, NOW());
 
 -- Insert effects for abilities
-INSERT INTO "Effects" ("Id", "AbilityDefinitionId", "EffectKind", "Amount", "Sequence", "CreatedAt") VALUES
+INSERT INTO effects (id, ability_definition_id, effect_kind, amount, sequence, created_at) VALUES
 ('effect-1', 'ability-1', 3, 5, 0, NOW()),
 ('effect-2', 'ability-2', 3, 10, 0, NOW()),
 ('effect-3', 'ability-3', 1, 1, 0, NOW()),
@@ -33,12 +33,12 @@ INSERT INTO "Effects" ("Id", "AbilityDefinitionId", "EffectKind", "Amount", "Seq
 ('effect-10', 'ability-10', 1, 1, 0, NOW());
 
 -- Insert 2 users
-INSERT INTO "Users" ("Id", "Email", "Username", "PasswordHash", "IsActive", "CreatedAt") VALUES
+INSERT INTO users (id, email, username, password_hash, is_active, created_at) VALUES
 ('user-1', 'playerone@flippy.com', 'PlayerOne', 'F6Qy4SHIl43C0v7BvDiaMF8PvQqLGHV6dFyYU9GxlXE=', true, NOW()),
 ('user-2', 'playertwo@flippy.com', 'PlayerTwo', 'F6Qy4SHIl43C0v7BvDiaMF8PvQqLGHV6dFyYU9GxlXE=', true, NOW());
 
 -- Insert 200 cards with deterministic properties
-INSERT INTO "Cards" ("Id", "CardId", "DisplayName", "Description", "ManaCost", "Attack", "Health", "Armor", "CardType", "CardRarity", "CardFaction", "UnitType", "AllowedRow", "DefaultAttackSelector", "TurnsUntilCanAttack", "IsLimited", "CreatedAt")
+INSERT INTO cards (id, card_id, display_name, description, mana_cost, attack, health, armor, card_type, card_rarity, card_faction, unit_type, allowed_row, default_attack_selector, turns_until_can_attack, is_limited, created_at)
 SELECT
     'card-' || i::text,
     CASE WHEN (i % 5) = 0 THEN 'ember_' WHEN (i % 5) = 1 THEN 'tidal_' WHEN (i % 5) = 2 THEN 'grove_' WHEN (i % 5) = 3 THEN 'alloy_' ELSE 'void_' END || LPAD(i::text, 4, '0'),
@@ -60,15 +60,15 @@ SELECT
 FROM generate_series(1, 200) AS t(i);
 
 -- Insert CardAbilities (0-3 per card, deterministic based on card ID)
-INSERT INTO "CardAbilities" ("Id", "CardDefinitionId", "AbilityDefinitionId", "Sequence")
+INSERT INTO card_abilities (id, card_definition_id, ability_definition_id, sequence)
 WITH card_ability_pairs AS (
     SELECT
-        c."Id" as card_id,
-        a."Id" as ability_id,
-        ROW_NUMBER() OVER (PARTITION BY c."Id" ORDER BY a."Id") - 1 as seq
-    FROM "Cards" c
-    CROSS JOIN "Abilities" a
-    WHERE (CAST(SUBSTRING(c."Id", 6) AS int) * 7 + CAST(SUBSTRING(a."Id", 9) AS int) * 3) % 10 < 3
+        c.id as card_id,
+        a.id as ability_id,
+        ROW_NUMBER() OVER (PARTITION BY c.id ORDER BY a.id) - 1 as seq
+    FROM cards c
+    CROSS JOIN abilities a
+    WHERE (CAST(SUBSTRING(c.id, 6) AS int) * 7 + CAST(SUBSTRING(a.id, 9) AS int) * 3) % 10 < 3
 )
 SELECT
     'ca-' || ROW_NUMBER() OVER (ORDER BY card_id, seq)::text,
@@ -78,16 +78,16 @@ SELECT
 FROM card_ability_pairs;
 
 -- Insert 10 decks: 5 for playerone, 5 for playertwo, 20 cards each
-INSERT INTO "Decks" ("Id", "UserId", "DeckId", "DisplayName", "CardIds", "CreatedAt")
+INSERT INTO decks (id, user_id, deck_id, display_name, card_ids, created_at)
 WITH card_ranking AS (
     SELECT
-        "CardId",
-        ROW_NUMBER() OVER (ORDER BY "CardId") as card_row
-    FROM "Cards"
+        card_id,
+        ROW_NUMBER() OVER (ORDER BY card_id) as card_row
+    FROM cards
 ),
 deck_assignment AS (
     SELECT
-        "CardId",
+        card_id,
         (card_row - 1) / 20 + 1 as deck_num,
         MOD(card_row - 1, 20) + 1 as card_in_deck
     FROM card_ranking
@@ -97,15 +97,15 @@ SELECT
     CASE WHEN deck_num <= 5 THEN 'user-1' ELSE 'user-2' END,
     'deck_' || CASE WHEN deck_num <= 5 THEN 'playerone' ELSE 'playertwo' END || '_' || (MOD(deck_num - 1, 5) + 1)::text,
     CASE WHEN deck_num <= 5 THEN 'PlayerOne' ELSE 'PlayerTwo' END || ' Deck ' || (MOD(deck_num - 1, 5) + 1)::text,
-    STRING_AGG("CardId", ',') FILTER (WHERE card_in_deck <= 20),
+    STRING_AGG(card_id, ',') FILTER (WHERE card_in_deck <= 20),
     NOW()
 FROM deck_assignment
 GROUP BY deck_num;
 
 -- Verify counts
-SELECT 'Cards' as name, COUNT(*) as count FROM "Cards"
-UNION ALL SELECT 'Abilities', COUNT(*) FROM "Abilities"
-UNION ALL SELECT 'Effects', COUNT(*) FROM "Effects"
-UNION ALL SELECT 'CardAbilities', COUNT(*) FROM "CardAbilities"
-UNION ALL SELECT 'Decks', COUNT(*) FROM "Decks"
-UNION ALL SELECT 'Users', COUNT(*) FROM "Users";
+SELECT 'cards' as name, COUNT(*) as count FROM cards
+UNION ALL SELECT 'abilities', COUNT(*) FROM abilities
+UNION ALL SELECT 'effects', COUNT(*) FROM effects
+UNION ALL SELECT 'card_abilities', COUNT(*) FROM card_abilities
+UNION ALL SELECT 'decks', COUNT(*) FROM decks
+UNION ALL SELECT 'users', COUNT(*) FROM users;
