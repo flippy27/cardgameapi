@@ -703,13 +703,8 @@ namespace CardDuel.ServerApi.Migrations
                 table: "audit_logs",
                 newName: "IX_audit_logs_created_at");
 
-            migrationBuilder.AlterColumn<string>(
-                name: "action_data",
-                table: "replay_logs",
-                type: "jsonb",
-                nullable: false,
-                oldClrType: typeof(string),
-                oldType: "text");
+            // Convert action_data from text to jsonb with explicit USING clause
+            migrationBuilder.Sql("ALTER TABLE replay_logs ALTER COLUMN action_data TYPE jsonb USING action_data::jsonb;");
 
             migrationBuilder.AddPrimaryKey(
                 name: "PK_users",
