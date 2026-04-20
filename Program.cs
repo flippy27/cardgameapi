@@ -112,7 +112,10 @@ builder.Services.AddHealthChecks()
 
 builder.Services.AddCors(options =>
     options.AddDefaultPolicy(builder =>
-        builder.WithOrigins("http://localhost:3000", "http://localhost:5173", "http://localhost:5000", "http://127.0.0.1:3000", "http://127.0.0.1:5173")
+        builder.WithOrigins(
+                "http://localhost:3000", "http://localhost:5173", "http://localhost:5000",
+                "http://127.0.0.1:3000", "http://127.0.0.1:5173", "http://127.0.0.1:5000",
+                "http://192.168.1.84:3000", "http://192.168.1.84:5173", "http://192.168.1.84:5000")
                .AllowAnyMethod()
                .AllowAnyHeader()
                .AllowCredentials()));
@@ -197,10 +200,10 @@ var logger = app.Services.GetRequiredService<ILogger<Program>>();
 logger.LogInformation("═══════════════════════════════════════════════════════════");
 logger.LogInformation("🎮 CardDuel Server API RUNNING");
 logger.LogInformation("═══════════════════════════════════════════════════════════");
-logger.LogInformation("📍 API Base URL: http://localhost:5000");
-logger.LogInformation("📚 Swagger Docs: http://localhost:5000/swagger");
-logger.LogInformation("🎯 Match Hub: ws://localhost:5000/hubs/match (SignalR)");
-logger.LogInformation("💚 Health Check: http://localhost:5000/api/v1/health");
+logger.LogInformation("📍 API Base URL: http://0.0.0.0:5000");
+logger.LogInformation("📚 Swagger Docs: http://0.0.0.0:5000/swagger");
+logger.LogInformation("🎯 Match Hub: ws://0.0.0.0:5000/hubs/match (SignalR)");
+logger.LogInformation("💚 Health Check: http://0.0.0.0:5000/api/v1/health");
 logger.LogInformation("═══════════════════════════════════════════════════════════");
 
-app.Run();
+app.Run("http://0.0.0.0:5000");
