@@ -11,7 +11,11 @@ namespace CardDuel.ServerApi.Controllers;
 [ApiController]
 [Route("api/v1/cards")]
 [Tags("Cards")]
-public sealed class CardsController(ICardCatalogService cardCatalogService, ICardManagementService cardManagementService) : ControllerBase
+public sealed class CardsController(
+    ICardCatalogService cardCatalogService,
+    ICardManagementService cardManagementService,
+    IDeckRepository deckRepository
+    ) : ControllerBase
 {
     [HttpGet]
     [AllowAnonymous]
@@ -251,6 +255,24 @@ public sealed class CardsController(ICardCatalogService cardCatalogService, ICar
     }
 
     // ===== PUBLIC FILTER ENDPOINTS =====
+
+    [HttpGet("by-deck")]
+    [AllowAnonymous]
+    public async Task<IActionResult> GetCardsByDeck([FromQuery] string playerid, [FromQuery] string deckid)
+    {
+
+        //  return BadRequest(new { message = "Deck must valid" });
+        var deckCardIds = deckRepository.GetDeck(playerid, deckid);
+        var card_ids = deckCardIds.CardIds;
+
+        var allCards = cardCatalogService.GetAll().Values
+            .Where(c => card_ids.Contains(c.CardId))
+            .OrderBy(c => c.DisplayName)
+            .ToList();
+
+        return Ok(allCards);
+    }
+
 
     [HttpGet("by-faction")]
     [AllowAnonymous]
