@@ -25,20 +25,20 @@ public sealed record CardDefinitionDto(
     List<AbilityDto> Abilities);
 
 public sealed record CreateCardRequest(
-    [property: Required] string CardId,
-    [property: Required] string DisplayName,
+    [Required] string CardId,
+    [Required] string DisplayName,
     string Description,
-    [property: Range(0, 20)] int ManaCost,
-    [property: Range(0, 20)] int Attack,
-    [property: Range(1, 20)] int Health,
-    [property: Range(0, 10)] int Armor,
-    [property: Range(0, 3)] int CardType,
-    [property: Range(0, 3)] int CardRarity,
-    [property: Range(0, 4)] int CardFaction,
+    [Range(0, 20)] int ManaCost,
+    [Range(0, 20)] int Attack,
+    [Range(1, 20)] int Health,
+    [Range(0, 10)] int Armor,
+    [Range(0, 3)] int CardType,
+    [Range(0, 3)] int CardRarity,
+    [Range(0, 4)] int CardFaction,
     int? UnitType,
-    [property: Range(0, 2)] int AllowedRow,
-    [property: Range(0, 4)] int DefaultAttackSelector,
-    [property: Range(0, 5)] int TurnsUntilCanAttack = 1,
+    [Range(0, 2)] int AllowedRow,
+    [Range(0, 4)] int DefaultAttackSelector,
+    [Range(0, 5)] int TurnsUntilCanAttack = 1,
     bool IsLimited = false);
 
 public sealed record UpdateCardRequest(
@@ -66,24 +66,21 @@ public sealed record AbilityDto(
     string Description,
     int TriggerKind,
     int TargetSelectorKind,
-    int? SkillType,
     List<EffectDto> Effects);
 
 public sealed record CreateAbilityRequest(
-    [property: Required] string AbilityId,
-    [property: Required] string DisplayName,
+    [Required] string AbilityId,
+    [Required] string DisplayName,
     string Description,
-    [property: Range(0, 3)] int TriggerKind,
-    [property: Range(0, 4)] int TargetSelectorKind,
-    int? SkillType,
-    [property: Required] List<CreateEffectRequest> Effects);
+    [Range(0, 3)] int TriggerKind,
+    [Range(0, 4)] int TargetSelectorKind,
+    [Required] List<CreateEffectRequest> Effects);
 
 public sealed record UpdateAbilityRequest(
     string? DisplayName,
     string? Description,
     int? TriggerKind,
-    int? TargetSelectorKind,
-    int? SkillType);
+    int? TargetSelectorKind);
 
 // ===== Effect DTOs =====
 
@@ -94,9 +91,9 @@ public sealed record EffectDto(
     int Sequence);
 
 public sealed record CreateEffectRequest(
-    [property: Range(0, 26)] int EffectKind,
-    [property: Range(1, 100)] int Amount,
-    [property: Range(0, 10)] int Sequence);
+    [Range(0, 26)] int EffectKind,
+    [Range(1, 100)] int Amount,
+    [Range(0, 10)] int Sequence);
 
 public sealed record UpdateEffectRequest(
     int? EffectKind,

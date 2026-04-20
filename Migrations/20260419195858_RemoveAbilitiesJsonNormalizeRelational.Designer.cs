@@ -3,6 +3,7 @@ using System;
 using CardDuel.ServerApi.Infrastructure;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
@@ -11,9 +12,11 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace CardDuel.ServerApi.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260419195858_RemoveAbilitiesJsonNormalizeRelational")]
+    partial class RemoveAbilitiesJsonNormalizeRelational
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -32,6 +35,10 @@ namespace CardDuel.ServerApi.Migrations
                         .HasMaxLength(128)
                         .HasColumnType("character varying(128)");
 
+                    b.Property<string>("CardDefinitionId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone");
 
@@ -45,6 +52,9 @@ namespace CardDuel.ServerApi.Migrations
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)");
 
+                    b.Property<int?>("SkillType")
+                        .HasColumnType("integer");
+
                     b.Property<int>("TargetSelectorKind")
                         .HasColumnType("integer");
 
@@ -56,7 +66,7 @@ namespace CardDuel.ServerApi.Migrations
 
                     b.HasKey("Id");
 
-                    b.HasIndex("AbilityId")
+                    b.HasIndex("CardDefinitionId", "AbilityId")
                         .IsUnique();
 
                     b.ToTable("Abilities");
@@ -111,32 +121,6 @@ namespace CardDuel.ServerApi.Migrations
                     b.HasIndex("Resource", "ResourceId");
 
                     b.ToTable("AuditLogs");
-                });
-
-            modelBuilder.Entity("CardDuel.ServerApi.Infrastructure.Models.CardAbilityDefinition", b =>
-                {
-                    b.Property<string>("Id")
-                        .HasColumnType("text");
-
-                    b.Property<string>("AbilityDefinitionId")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<string>("CardDefinitionId")
-                        .IsRequired()
-                        .HasColumnType("text");
-
-                    b.Property<int>("Sequence")
-                        .HasColumnType("integer");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("AbilityDefinitionId");
-
-                    b.HasIndex("CardDefinitionId", "Sequence")
-                        .IsUnique();
-
-                    b.ToTable("CardAbilities");
                 });
 
             modelBuilder.Entity("CardDuel.ServerApi.Infrastructure.Models.CardDefinition", b =>
@@ -501,21 +485,13 @@ namespace CardDuel.ServerApi.Migrations
                     b.ToTable("Users");
                 });
 
-            modelBuilder.Entity("CardDuel.ServerApi.Infrastructure.Models.CardAbilityDefinition", b =>
+            modelBuilder.Entity("CardDuel.ServerApi.Infrastructure.Models.AbilityDefinition", b =>
                 {
-                    b.HasOne("CardDuel.ServerApi.Infrastructure.Models.AbilityDefinition", "AbilityDefinition")
-                        .WithMany("CardAbilities")
-                        .HasForeignKey("AbilityDefinitionId")
-                        .OnDelete(DeleteBehavior.Cascade)
-                        .IsRequired();
-
                     b.HasOne("CardDuel.ServerApi.Infrastructure.Models.CardDefinition", "CardDefinition")
-                        .WithMany("CardAbilities")
+                        .WithMany("Abilities")
                         .HasForeignKey("CardDefinitionId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
-
-                    b.Navigation("AbilityDefinition");
 
                     b.Navigation("CardDefinition");
                 });
@@ -544,14 +520,12 @@ namespace CardDuel.ServerApi.Migrations
 
             modelBuilder.Entity("CardDuel.ServerApi.Infrastructure.Models.AbilityDefinition", b =>
                 {
-                    b.Navigation("CardAbilities");
-
                     b.Navigation("Effects");
                 });
 
             modelBuilder.Entity("CardDuel.ServerApi.Infrastructure.Models.CardDefinition", b =>
                 {
-                    b.Navigation("CardAbilities");
+                    b.Navigation("Abilities");
                 });
 
             modelBuilder.Entity("CardDuel.ServerApi.Infrastructure.Models.UserAccount", b =>

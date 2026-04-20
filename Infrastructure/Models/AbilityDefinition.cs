@@ -8,13 +8,9 @@ public sealed class AbilityDefinition
     public string Description { get; set; } = string.Empty;
     public int TriggerKind { get; set; } // TriggerKind enum: OnPlay, OnTurnStart, OnTurnEnd, OnBattlePhase
     public int TargetSelectorKind { get; set; } // TargetSelectorKind enum
-    public int? SkillType { get; set; } // SkillType enum: Defensive, Offensive, Equipable, Utility, Modifier (nullable)
-
-    // Foreign key
-    public string CardDefinitionId { get; set; } = string.Empty;
-    public CardDefinition CardDefinition { get; set; } = null!;
 
     // Navigation
+    public ICollection<CardAbilityDefinition> CardAbilities { get; set; } = new List<CardAbilityDefinition>();
     public ICollection<EffectDefinition> Effects { get; set; } = new List<EffectDefinition>();
 
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;

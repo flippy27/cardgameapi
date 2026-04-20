@@ -54,7 +54,7 @@ public sealed class CardManagementService(AppDbContext db) : ICardManagementServ
 
     public async Task<CardDefinitionDto> UpdateCardAsync(string cardId, UpdateCardRequest request)
     {
-        var card = await db.Cards.Include(c => c.Abilities).ThenInclude(a => a.Effects)
+        var card = await db.Cards.Include(c => c.CardAbilities).ThenInclude(ca => ca.AbilityDefinition).ThenInclude(a => a.Effects)
             .FirstOrDefaultAsync(c => c.CardId == cardId)
             ?? throw new KeyNotFoundException($"Card '{cardId}' not found");
 
@@ -92,38 +92,43 @@ public sealed class CardManagementService(AppDbContext db) : ICardManagementServ
 
     public async Task<AbilityDto> AddAbilityAsync(string cardId, CreateAbilityRequest request)
     {
-        var card = await db.Cards.Include(c => c.Abilities)
+        var card = await db.Cards.Include(c => c.CardAbilities)
             .FirstOrDefaultAsync(c => c.CardId == cardId)
             ?? throw new KeyNotFoundException($"Card '{cardId}' not found");
 
-        var existingAbility = card.Abilities.FirstOrDefault(a => a.AbilityId == request.AbilityId);
-        if (existingAbility != null)
-            throw new InvalidOperationException($"Ability '{request.AbilityId}' already exists on this card");
-
-        var ability = new AbilityDefinition
+        var existingAbility = await db.Abilities.FirstOrDefaultAsync(a => a.AbilityId == request.AbilityId);
+        var ability = existingAbility ?? new AbilityDefinition
         {
             AbilityId = request.AbilityId,
             DisplayName = request.DisplayName,
             Description = request.Description,
             TriggerKind = request.TriggerKind,
-            TargetSelectorKind = request.TargetSelectorKind,
-            SkillType = request.SkillType,
-            CardDefinitionId = card.Id
+            TargetSelectorKind = request.TargetSelectorKind
         };
 
-        // Add effects in sequence
-        for (int i = 0; i < request.Effects.Count; i++)
+        if (existingAbility == null)
         {
-            var effect = request.Effects[i];
-            ability.Effects.Add(new EffectDefinition
+            // Add effects in sequence
+            for (int i = 0; i < request.Effects.Count; i++)
             {
-                EffectKind = effect.EffectKind,
-                Amount = effect.Amount,
-                Sequence = i
-            });
+                var effect = request.Effects[i];
+                ability.Effects.Add(new EffectDefinition
+                {
+                    EffectKind = effect.EffectKind,
+                    Amount = effect.Amount,
+                    Sequence = i
+                });
+            }
+            db.Abilities.Add(ability);
         }
 
-        card.Abilities.Add(ability);
+        var cardAbility = new CardAbilityDefinition
+        {
+            CardDefinitionId = card.Id,
+            AbilityDefinitionId = ability.Id,
+            Sequence = card.CardAbilities.Count
+        };
+        db.CardAbilities.Add(cardAbility);
         await db.SaveChangesAsync();
 
         return MapToDto(ability);
@@ -131,17 +136,17 @@ public sealed class CardManagementService(AppDbContext db) : ICardManagementServ
 
     public async Task<AbilityDto> UpdateAbilityAsync(string cardId, string abilityId, UpdateAbilityRequest request)
     {
-        var ability = await db.Abilities
-            .Include(a => a.Effects)
-            .Include(a => a.CardDefinition)
-            .FirstOrDefaultAsync(a => a.CardDefinition.CardId == cardId && a.AbilityId == abilityId)
+        var cardAbility = await db.CardAbilities
+            .Include(ca => ca.AbilityDefinition).ThenInclude(a => a.Effects)
+            .Include(ca => ca.CardDefinition)
+            .FirstOrDefaultAsync(ca => ca.CardDefinition.CardId == cardId && ca.AbilityDefinition.AbilityId == abilityId)
             ?? throw new KeyNotFoundException($"Ability '{abilityId}' not found on card '{cardId}'");
 
+        var ability = cardAbility.AbilityDefinition;
         if (request.DisplayName != null) ability.DisplayName = request.DisplayName;
         if (request.Description != null) ability.Description = request.Description;
         if (request.TriggerKind.HasValue) ability.TriggerKind = request.TriggerKind.Value;
         if (request.TargetSelectorKind.HasValue) ability.TargetSelectorKind = request.TargetSelectorKind.Value;
-        if (request.SkillType.HasValue) ability.SkillType = request.SkillType.Value;
 
         ability.UpdatedAt = DateTimeOffset.UtcNow;
 
@@ -152,23 +157,23 @@ public sealed class CardManagementService(AppDbContext db) : ICardManagementServ
 
     public async Task<bool> DeleteAbilityAsync(string cardId, string abilityId)
     {
-        var ability = await db.Abilities
-            .Include(a => a.CardDefinition)
-            .FirstOrDefaultAsync(a => a.CardDefinition.CardId == cardId && a.AbilityId == abilityId);
+        var cardAbility = await db.CardAbilities
+            .Include(ca => ca.CardDefinition)
+            .FirstOrDefaultAsync(ca => ca.CardDefinition.CardId == cardId && ca.AbilityDefinition.AbilityId == abilityId);
 
-        if (ability == null) return false;
+        if (cardAbility == null) return false;
 
-        db.Abilities.Remove(ability);
+        db.CardAbilities.Remove(cardAbility);
         await db.SaveChangesAsync();
         return true;
     }
 
     public async Task<EffectDto> AddEffectAsync(string cardId, string abilityId, CreateEffectRequest request)
     {
-        var ability = await db.Abilities
-            .Include(a => a.Effects)
-            .Include(a => a.CardDefinition)
-            .FirstOrDefaultAsync(a => a.CardDefinition.CardId == cardId && a.AbilityId == abilityId)
+        var cardAbility = await db.CardAbilities
+            .Include(ca => ca.AbilityDefinition).ThenInclude(a => a.Effects)
+            .Include(ca => ca.CardDefinition)
+            .FirstOrDefaultAsync(ca => ca.CardDefinition.CardId == cardId && ca.AbilityDefinition.AbilityId == abilityId)
             ?? throw new KeyNotFoundException($"Ability '{abilityId}' not found on card '{cardId}'");
 
         var effect = new EffectDefinition
@@ -176,10 +181,10 @@ public sealed class CardManagementService(AppDbContext db) : ICardManagementServ
             EffectKind = request.EffectKind,
             Amount = request.Amount,
             Sequence = request.Sequence,
-            AbilityDefinitionId = ability.Id
+            AbilityDefinitionId = cardAbility.AbilityDefinitionId
         };
 
-        ability.Effects.Add(effect);
+        cardAbility.AbilityDefinition.Effects.Add(effect);
         await db.SaveChangesAsync();
 
         return MapToDto(effect);
@@ -188,9 +193,9 @@ public sealed class CardManagementService(AppDbContext db) : ICardManagementServ
     public async Task<EffectDto> UpdateEffectAsync(string cardId, string abilityId, string effectId, UpdateEffectRequest request)
     {
         var effect = await db.Effects
-            .Include(e => e.AbilityDefinition.CardDefinition)
+            .Include(e => e.AbilityDefinition).ThenInclude(a => a.CardAbilities)
             .FirstOrDefaultAsync(e => e.Id == effectId &&
-                e.AbilityDefinition.CardDefinition.CardId == cardId &&
+                e.AbilityDefinition.CardAbilities.Any(ca => ca.CardDefinition.CardId == cardId) &&
                 e.AbilityDefinition.AbilityId == abilityId)
             ?? throw new KeyNotFoundException($"Effect '{effectId}' not found");
 
@@ -206,9 +211,9 @@ public sealed class CardManagementService(AppDbContext db) : ICardManagementServ
     public async Task<bool> DeleteEffectAsync(string cardId, string abilityId, string effectId)
     {
         var effect = await db.Effects
-            .Include(e => e.AbilityDefinition.CardDefinition)
+            .Include(e => e.AbilityDefinition).ThenInclude(a => a.CardAbilities)
             .FirstOrDefaultAsync(e => e.Id == effectId &&
-                e.AbilityDefinition.CardDefinition.CardId == cardId &&
+                e.AbilityDefinition.CardAbilities.Any(ca => ca.CardDefinition.CardId == cardId) &&
                 e.AbilityDefinition.AbilityId == abilityId);
 
         if (effect == null) return false;
@@ -221,7 +226,8 @@ public sealed class CardManagementService(AppDbContext db) : ICardManagementServ
     public async Task<CardDefinitionDto?> GetCardWithAbilitiesAsync(string cardId)
     {
         var card = await db.Cards
-            .Include(c => c.Abilities.OrderBy(a => a.AbilityId))
+            .Include(c => c.CardAbilities.OrderBy(ca => ca.Sequence))
+            .ThenInclude(ca => ca.AbilityDefinition)
             .ThenInclude(a => a.Effects.OrderBy(e => e.Sequence))
             .FirstOrDefaultAsync(c => c.CardId == cardId);
 
@@ -232,11 +238,11 @@ public sealed class CardManagementService(AppDbContext db) : ICardManagementServ
         new(card.Id, card.CardId, card.DisplayName, card.Description, card.ManaCost, card.Attack, card.Health,
             card.Armor, card.CardType, card.CardRarity, card.CardFaction, card.UnitType, card.AllowedRow,
             card.DefaultAttackSelector, card.TurnsUntilCanAttack, card.IsLimited,
-            card.Abilities.Select(MapToDto).ToList());
+            card.CardAbilities.OrderBy(ca => ca.Sequence).Select(ca => MapToDto(ca.AbilityDefinition)).ToList());
 
     private static AbilityDto MapToDto(AbilityDefinition ability) =>
         new(ability.Id, ability.AbilityId, ability.DisplayName, ability.Description, ability.TriggerKind,
-            ability.TargetSelectorKind, ability.SkillType, ability.Effects.OrderBy(e => e.Sequence).Select(MapToDto).ToList());
+            ability.TargetSelectorKind, ability.Effects.OrderBy(e => e.Sequence).Select(MapToDto).ToList());
 
     private static EffectDto MapToDto(EffectDefinition effect) =>
         new(effect.Id, effect.EffectKind, effect.Amount, effect.Sequence);

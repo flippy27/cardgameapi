@@ -19,12 +19,8 @@ public sealed class CardDefinition
     public int TurnsUntilCanAttack { get; set; } = 1;
     public bool IsLimited { get; set; } = false;
 
-    // Legacy JSON field (deprecated, kept for backward compat)
-    [Obsolete("Use Abilities relationship instead")]
-    public string AbilitiesJson { get; set; } = "[]";
-
     // Navigation
-    public ICollection<AbilityDefinition> Abilities { get; set; } = new List<AbilityDefinition>();
+    public ICollection<CardAbilityDefinition> CardAbilities { get; set; } = new List<CardAbilityDefinition>();
 
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? UpdatedAt { get; set; }

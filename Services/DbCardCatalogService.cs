@@ -1,4 +1,3 @@
-using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using CardDuel.ServerApi.Game;
 using CardDuel.ServerApi.Infrastructure;
@@ -15,11 +14,25 @@ public sealed class DbCardCatalogService(AppDbContext dbContext) : ICardCatalogS
         if (_catalog != null) return _catalog;
 
         _catalog = new Dictionary<string, ServerCardDefinition>(StringComparer.OrdinalIgnoreCase);
-        var cards = dbContext.Cards.AsNoTracking().ToList();
+        var cards = dbContext.Cards.AsNoTracking()
+            .Include(c => c.CardAbilities)
+            .ThenInclude(ca => ca.AbilityDefinition)
+            .ThenInclude(a => a.Effects)
+            .ToList();
 
         foreach (var card in cards)
         {
-            var abilities = ParseAbilities(card.AbilitiesJson);
+            var abilities = card.CardAbilities
+                .OrderBy(ca => ca.Sequence)
+                .Select(ca => ca.AbilityDefinition)
+                .Select(a => new ServerAbilityDefinition(
+                    a.AbilityId,
+                    a.DisplayName ?? a.AbilityId,
+                    (TriggerKind)a.TriggerKind,
+                    (TargetSelectorKind)a.TargetSelectorKind,
+                    a.Effects.OrderBy(e => e.Sequence).Select(e => new ServerEffectDefinition((EffectKind)e.EffectKind, e.Amount)).ToList()
+                )).ToList().AsReadOnly();
+
             var def = new ServerCardDefinition(
                 card.CardId,
                 card.DisplayName,
@@ -53,29 +66,4 @@ public sealed class DbCardCatalogService(AppDbContext dbContext) : ICardCatalogS
     }
 
     public void InvalidateCache() => _catalog = null;
-
-    private static IReadOnlyList<ServerAbilityDefinition> ParseAbilities(string json)
-    {
-        if (string.IsNullOrWhiteSpace(json) || json == "[]") return Array.Empty<ServerAbilityDefinition>();
-
-        try
-        {
-            var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-            var items = JsonSerializer.Deserialize<List<AbilityJson>>(json, options) ?? new();
-            return items.Select(a => new ServerAbilityDefinition(
-                a.AbilityId,
-                a.DisplayName ?? a.AbilityId,
-                (TriggerKind)a.Trigger,
-                (TargetSelectorKind)a.Selector,
-                a.Effects.Select(e => new ServerEffectDefinition((EffectKind)e.Kind, e.Amount)).ToList()
-            )).ToList().AsReadOnly();
-        }
-        catch
-        {
-            return Array.Empty<ServerAbilityDefinition>();
-        }
-    }
-
-    private sealed record AbilityJson(string AbilityId, string? DisplayName, int Trigger, int Selector, List<EffectJson> Effects);
-    private sealed record EffectJson(int Kind, int Amount);
 }

@@ -1,6 +1,7 @@
 using System.ComponentModel.DataAnnotations;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
+using System.Security.Cryptography;
 using System.Text;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
@@ -65,7 +66,35 @@ public sealed class AuthController(
         }
 
         var user = await dbContext.Users.FirstOrDefaultAsync(u => u.Email == request.Email);
-        if (user == null || !BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash))
+        if (user == null)
+        {
+            logger.LogWarning("Failed login attempt for {Email}", request.Email);
+            return Unauthorized(new { message = "Invalid email or password" });
+        }
+
+        // Support both BCrypt and SHA256 hashes (for seeded test users)
+        var passwordValid = false;
+        try
+        {
+            passwordValid = BCrypt.Net.BCrypt.Verify(request.Password, user.PasswordHash);
+        }
+        catch (BCrypt.Net.SaltParseException)
+        {
+            // Hash is not BCrypt, try SHA256
+        }
+
+        if (!passwordValid)
+        {
+            // Fallback: check SHA256 (for seeded test accounts)
+            using (var sha256 = SHA256.Create())
+            {
+                var hashedBytes = sha256.ComputeHash(Encoding.UTF8.GetBytes(request.Password));
+                var sha256Hash = Convert.ToBase64String(hashedBytes);
+                passwordValid = user.PasswordHash == sha256Hash;
+            }
+        }
+
+        if (!passwordValid)
         {
             logger.LogWarning("Failed login attempt for {Email}", request.Email);
             return Unauthorized(new { message = "Invalid email or password" });
