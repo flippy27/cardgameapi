@@ -17,12 +17,12 @@ public static class CardCatalogSeeder
     };
 
     private static readonly string[] Factions = { "Ember", "Tidal", "Grove", "Alloy", "Void" };
-    private static readonly string[] Rarities = { "Common", "Uncommon", "Rare", "Epic", "Legendary" };
+    private static readonly string[] Rarities = { "Common", "Rare", "Epic", "Legendary" };
     private static readonly string[] Types = { "Unit", "Spell", "Artifact" };
 
     public static void SeedCards(AppDbContext db)
     {
-        if (db.Cards.Any()) return;
+        if (db.Abilities.Any()) return;
 
         // Create abilities (matching cardgame reference exactly)
         var abilities = CreateAbilities();
