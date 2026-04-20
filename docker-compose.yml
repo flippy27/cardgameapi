@@ -32,6 +32,8 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    ports:
+      - "5000:8080"
     expose:
       - "8080"
     healthcheck:
