@@ -24,9 +24,9 @@ public interface IDeckRepository
 
 public interface IMatchService
 {
-    MatchReservationDto CreatePrivate(string playerId, string deckId, string? name);
+    MatchReservationDto CreatePrivate(string playerId, string deckId, string? name, ResolvedGameRules resolvedRules);
     MatchReservationDto JoinPrivate(string playerId, string deckId, string roomCode);
-    MatchReservationDto Queue(string playerId, string deckId, QueueMode mode, int rating);
+    MatchReservationDto Queue(string playerId, string deckId, QueueMode mode, int rating, ResolvedGameRules resolvedRules);
     bool TryReconnect(string matchId, string playerId, string reconnectToken, out int seatIndex);
     MatchSnapshot Connect(string matchId, string playerId, string reconnectToken, string connectionId);
     MatchSnapshot SetReady(string matchId, string playerId, bool ready);
@@ -142,7 +142,7 @@ public sealed class InMemoryMatchService : IMatchService, IDisposable
     private readonly ConcurrentDictionary<string, MatchRoom> _matches = new(StringComparer.OrdinalIgnoreCase);
     private readonly ConcurrentDictionary<string, string> _roomCodes = new(StringComparer.OrdinalIgnoreCase);
     private readonly object _sync = new();
-    private WaitingTicket? _casualWaiting;
+    private readonly List<WaitingTicket> _casualWaiting = new();
     private readonly List<WaitingTicket> _rankedWaiting = new();
     private readonly Timer _timer;
     private readonly TimeSpan _disconnectGrace;
@@ -156,13 +156,14 @@ public sealed class InMemoryMatchService : IMatchService, IDisposable
         _timer = new Timer(_ => Tick(), null, TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(1));
     }
 
-    public MatchReservationDto CreatePrivate(string playerId, string deckId, string? name)
+    public MatchReservationDto CreatePrivate(string playerId, string deckId, string? name, ResolvedGameRules resolvedRules)
     {
         lock (_sync)
         {
-            var room = CreateRoom(QueueMode.Private, name);
+            var room = CreateRoom(QueueMode.Private, name, resolvedRules);
             var deck = _deckRepository.GetDeck(playerId, deckId);
             var reservation = room.Engine.ReserveSeat(playerId, deckId, _catalogService.ResolveDeck(deck.CardIds));
+            SyncMatchRecord(room);
             return reservation;
         }
     }
@@ -177,51 +178,61 @@ public sealed class InMemoryMatchService : IMatchService, IDisposable
             }
 
             var deck = _deckRepository.GetDeck(playerId, deckId);
-            return room.Engine.ReserveSeat(playerId, deckId, _catalogService.ResolveDeck(deck.CardIds));
+            var reservation = room.Engine.ReserveSeat(playerId, deckId, _catalogService.ResolveDeck(deck.CardIds));
+            SyncMatchRecord(room);
+            return reservation;
         }
     }
 
-    public MatchReservationDto Queue(string playerId, string deckId, QueueMode mode, int rating)
+    public MatchReservationDto Queue(string playerId, string deckId, QueueMode mode, int rating, ResolvedGameRules resolvedRules)
     {
         lock (_sync)
         {
             if (mode == QueueMode.Casual)
             {
-                if (_casualWaiting == null)
+                var candidate = _casualWaiting.FirstOrDefault(ticket => string.Equals(ticket.RulesetId, resolvedRules.RulesetId, StringComparison.Ordinal));
+                if (candidate == null)
                 {
-                    var room = CreateRoom(QueueMode.Casual, null);
+                    var room = CreateRoom(QueueMode.Casual, null, resolvedRules);
                     var hostDeck = _deckRepository.GetDeck(playerId, deckId);
                     var reservation = room.Engine.ReserveSeat(playerId, deckId, _catalogService.ResolveDeck(hostDeck.CardIds));
-                    _casualWaiting = new WaitingTicket(playerId, deckId, rating, room.MatchId);
+                    _casualWaiting.Add(new WaitingTicket(playerId, deckId, rating, room.MatchId, resolvedRules.RulesetId));
+                    SyncMatchRecord(room);
                     return reservation with { WaitingForOpponent = true, Status = "queued" };
                 }
 
-                if (!_matches.TryGetValue(_casualWaiting.MatchId, out var waitingRoom))
+                if (!_matches.TryGetValue(candidate.MatchId, out var waitingRoom))
                 {
-                    _casualWaiting = null;
-                    return Queue(playerId, deckId, mode, rating);
+                    _casualWaiting.Remove(candidate);
+                    return Queue(playerId, deckId, mode, rating, resolvedRules);
                 }
 
                 var joinDeck = _deckRepository.GetDeck(playerId, deckId);
                 var joined = waitingRoom.Engine.ReserveSeat(playerId, deckId, _catalogService.ResolveDeck(joinDeck.CardIds));
-                _casualWaiting = null;
+                _casualWaiting.Remove(candidate);
+                SyncMatchRecord(waitingRoom);
                 return joined with { WaitingForOpponent = false, Status = "matched" };
             }
 
-            var candidate = _rankedWaiting.OrderBy(ticket => Math.Abs(ticket.Rating - rating)).FirstOrDefault();
-            if (candidate == null)
+            var rankedCandidate = _rankedWaiting
+                .Where(ticket => string.Equals(ticket.RulesetId, resolvedRules.RulesetId, StringComparison.Ordinal))
+                .OrderBy(ticket => Math.Abs(ticket.Rating - rating))
+                .FirstOrDefault();
+            if (rankedCandidate == null)
             {
-                var room = CreateRoom(QueueMode.Ranked, null);
+                var room = CreateRoom(QueueMode.Ranked, null, resolvedRules);
                 var hostDeck = _deckRepository.GetDeck(playerId, deckId);
                 var reservation = room.Engine.ReserveSeat(playerId, deckId, _catalogService.ResolveDeck(hostDeck.CardIds));
-                _rankedWaiting.Add(new WaitingTicket(playerId, deckId, rating, room.MatchId));
+                _rankedWaiting.Add(new WaitingTicket(playerId, deckId, rating, room.MatchId, resolvedRules.RulesetId));
+                SyncMatchRecord(room);
                 return reservation with { WaitingForOpponent = true, Status = "queued" };
             }
 
-            _rankedWaiting.Remove(candidate);
-            var rankedRoom = _matches[candidate.MatchId];
+            _rankedWaiting.Remove(rankedCandidate);
+            var rankedRoom = _matches[rankedCandidate.MatchId];
             var otherDeck = _deckRepository.GetDeck(playerId, deckId);
             var rankedJoined = rankedRoom.Engine.ReserveSeat(playerId, deckId, _catalogService.ResolveDeck(otherDeck.CardIds));
+            SyncMatchRecord(rankedRoom);
             return rankedJoined with { WaitingForOpponent = false, Status = "matched" };
         }
     }
@@ -317,6 +328,9 @@ public sealed class InMemoryMatchService : IMatchService, IDisposable
                         Player1Id = room.Engine.Seats[0].PlayerId,
                         Player2Id = room.Engine.Seats[1].PlayerId,
                         Mode = room.Engine.Mode,
+                        GameRulesetId = room.Engine.Rules.RulesetId,
+                        GameRulesetName = room.Engine.Rules.DisplayName,
+                        GameRulesSnapshotJson = room.Engine.Rules.ToSnapshotJson(),
                         CreatedAt = DateTimeOffset.UtcNow
                     };
                     dbContext.Matches.Add(match);
@@ -380,14 +394,17 @@ public sealed class InMemoryMatchService : IMatchService, IDisposable
             var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
             var match = dbContext.Matches.FirstOrDefault(m => m.MatchId == matchId);
-            if (match == null)
-            {
-                match = new MatchRecord
+                if (match == null)
                 {
-                    Id = Guid.NewGuid().ToString(),
-                    MatchId = matchId,
-                    CreatedAt = DateTimeOffset.UtcNow
-                };
+                    match = new MatchRecord
+                    {
+                        Id = Guid.NewGuid().ToString(),
+                        MatchId = matchId,
+                        GameRulesetId = string.Empty,
+                        GameRulesetName = string.Empty,
+                        GameRulesSnapshotJson = "{}",
+                        CreatedAt = DateTimeOffset.UtcNow
+                    };
                 dbContext.Matches.Add(match);
                 dbContext.SaveChanges();
             }
@@ -466,11 +483,15 @@ public sealed class InMemoryMatchService : IMatchService, IDisposable
         room.Engine.AddSpectator(spectatorId, connectionId);
     }
 
-    private MatchRoom CreateRoom(QueueMode mode, string? name)
+    private MatchRoom CreateRoom(QueueMode mode, string? name, ResolvedGameRules resolvedRules)
     {
         var matchId = Guid.NewGuid().ToString("N");
         var code = CreateRoomCode();
-        var room = new MatchRoom(matchId, name ?? $"{mode}-match", new MatchEngine(matchId, code, mode, _disconnectGrace));
+        var room = new MatchRoom(
+            matchId,
+            name ?? $"{mode}-match",
+            new MatchEngine(matchId, code, mode, _disconnectGrace, resolvedRules.Rules),
+            resolvedRules.SnapshotJson);
         _matches[matchId] = room;
         _roomCodes[code] = matchId;
         return room;
@@ -522,20 +543,54 @@ public sealed class InMemoryMatchService : IMatchService, IDisposable
         }
     }
 
-    private sealed record WaitingTicket(string PlayerId, string DeckId, int Rating, string MatchId);
+    private void SyncMatchRecord(MatchRoom room)
+    {
+        using var scope = _serviceProvider.CreateScope();
+        var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+
+        var model = dbContext.Matches.FirstOrDefault(match => match.MatchId == room.MatchId);
+        if (model == null)
+        {
+            model = new MatchRecord
+            {
+                MatchId = room.MatchId,
+                RoomCode = room.Engine.RoomCode,
+                Mode = room.Engine.Mode,
+                CreatedAt = DateTimeOffset.UtcNow,
+                GameRulesetId = room.Engine.Rules.RulesetId,
+                GameRulesetName = room.Engine.Rules.DisplayName,
+                GameRulesSnapshotJson = room.RulesSnapshotJson
+            };
+            dbContext.Matches.Add(model);
+        }
+
+        model.Player1Id = room.Engine.Seats[0].PlayerId;
+        model.Player2Id = room.Engine.Seats[1].PlayerId;
+        model.Player1ReconnectToken = room.Engine.Seats[0].ReconnectToken;
+        model.Player2ReconnectToken = room.Engine.Seats[1].ReconnectToken;
+        model.GameRulesetId = room.Engine.Rules.RulesetId;
+        model.GameRulesetName = room.Engine.Rules.DisplayName;
+        model.GameRulesSnapshotJson = room.RulesSnapshotJson;
+
+        dbContext.SaveChanges();
+    }
+
+    private sealed record WaitingTicket(string PlayerId, string DeckId, int Rating, string MatchId, string RulesetId);
 
     private sealed class MatchRoom
     {
-        public MatchRoom(string matchId, string name, MatchEngine engine)
+        public MatchRoom(string matchId, string name, MatchEngine engine, string rulesSnapshotJson)
         {
             MatchId = matchId;
             Name = name;
             Engine = engine;
+            RulesSnapshotJson = rulesSnapshotJson;
         }
 
         public string MatchId { get; }
         public string Name { get; }
         public MatchEngine Engine { get; }
+        public string RulesSnapshotJson { get; }
         public ConcurrentDictionary<string, string> PlayerConnections { get; } = new(StringComparer.Ordinal);
     }
 }

@@ -7,7 +7,6 @@ public sealed class AuditLoggingMiddleware(RequestDelegate next, ILogger<AuditLo
 {
     public async Task InvokeAsync(HttpContext context, IAuditService auditService)
     {
-        var userId = context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value ?? "anonymous";
         var method = context.Request.Method;
         var path = context.Request.Path.Value ?? string.Empty;
         var ip = context.Connection.RemoteIpAddress?.ToString() ?? "unknown";
@@ -15,14 +14,17 @@ public sealed class AuditLoggingMiddleware(RequestDelegate next, ILogger<AuditLo
         var originalBodyStream = context.Response.Body;
         using var responseBody = new MemoryStream();
         context.Response.Body = responseBody;
+        var completed = false;
 
         try
         {
             await next(context);
+            completed = true;
 
             var statusCode = context.Response.StatusCode;
             if (ShouldAudit(method, path))
             {
+                var userId = GetUserIdentifier(context);
                 var resource = ExtractResource(path);
                 var resourceId = ExtractResourceId(path);
                 var action = $"{method} {path}";
@@ -37,9 +39,14 @@ public sealed class AuditLoggingMiddleware(RequestDelegate next, ILogger<AuditLo
         }
         finally
         {
-            responseBody.Position = 0;
-            context.Response.ContentLength = responseBody.Length;
-            await responseBody.CopyToAsync(originalBodyStream);
+            context.Response.Body = originalBodyStream;
+
+            if (completed)
+            {
+                responseBody.Position = 0;
+                context.Response.ContentLength = responseBody.Length;
+                await responseBody.CopyToAsync(originalBodyStream);
+            }
         }
     }
 
@@ -65,5 +72,19 @@ public sealed class AuditLoggingMiddleware(RequestDelegate next, ILogger<AuditLo
     {
         var parts = path.Split('/');
         return parts.Length > 3 ? parts[^1] : string.Empty;
+    }
+
+    private static string GetUserIdentifier(HttpContext context)
+    {
+        var user = context.User;
+        if (user?.Identity?.IsAuthenticated != true)
+        {
+            return "anonymous";
+        }
+
+        return user.FindFirst(ClaimTypes.NameIdentifier)?.Value
+            ?? user.FindFirst("sub")?.Value
+            ?? user.Identity?.Name
+            ?? "authenticated";
     }
 }

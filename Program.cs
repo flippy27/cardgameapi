@@ -113,6 +113,7 @@ builder.Services.AddHealthChecks()
 builder.Services.AddCors(options =>
     options.AddDefaultPolicy(builder =>
         builder.WithOrigins(
+                "http://localhost",
                 "http://localhost:3000", "http://localhost:5173", "http://localhost:5000",
                 "http://127.0.0.1:3000", "http://127.0.0.1:5173", "http://127.0.0.1:5000",
                 "http://192.168.1.84:3000", "http://192.168.1.84:5173", "http://192.168.1.84:5000")
@@ -140,6 +141,7 @@ if (builder.Configuration.GetValue<bool>("SignalR:UseRedisBackplane"))
 builder.Services.AddScoped<ICardCatalogService, DbCardCatalogService>();
 builder.Services.AddScoped<ICardManagementService, CardManagementService>();
 builder.Services.AddScoped<IDeckRepository, DbDeckRepository>();
+builder.Services.AddScoped<IGameRulesetService, GameRulesetService>();
 builder.Services.AddSingleton<IMatchService, InMemoryMatchService>();
 builder.Services.AddSingleton<InMemoryTournamentStore>();
 builder.Services.AddScoped<IRatingService, EloRatingService>();
@@ -164,6 +166,8 @@ using (var scope = app.Services.CreateScope())
         migrationLogger.LogInformation("Database migrations completed successfully");
         CardCatalogSeeder.SeedCards(db);
         migrationLogger.LogInformation("Card catalog seeded");
+        GameRulesetSeeder.SeedDefaultRuleset(db);
+        migrationLogger.LogInformation("Default game ruleset seeded");
     }
     catch (Exception ex)
     {
@@ -177,12 +181,12 @@ app.UseSwagger();
 app.UseSwaggerUI();
 app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseMiddleware<MetricsMiddleware>();
-app.UseMiddleware<RequestResponseLoggingMiddleware>();
 app.UseMiddleware<RateLimitMiddleware>();
-app.UseMiddleware<AuditLoggingMiddleware>();
 app.UseMiddleware<GlobalExceptionHandlerMiddleware>();
 app.UseCors();
 app.UseAuthentication();
+app.UseMiddleware<RequestResponseLoggingMiddleware>();
+app.UseMiddleware<AuditLoggingMiddleware>();
 app.UseAuthorization();
 app.UseResponseCompression();
 

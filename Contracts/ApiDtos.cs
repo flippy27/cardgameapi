@@ -9,21 +9,91 @@ public enum QueueMode
     Private = 2
 }
 
+public enum ManaGrantTiming
+{
+    StartOfTurn = 0,
+    EndOfTurn = 1
+}
+
+public sealed record GameRulesSeatOverrideDto(
+    int SeatIndex,
+    int AdditionalHeroHealth,
+    int AdditionalMaxHeroHealth,
+    int AdditionalStartingMana,
+    int AdditionalMaxMana,
+    int AdditionalManaPerTurn,
+    int AdditionalCardsDrawnOnTurnStart);
+
+public sealed record GameRulesDto(
+    string RulesetId,
+    string RulesetKey,
+    string DisplayName,
+    string? Description,
+    bool IsActive,
+    bool IsDefault,
+    int StartingHeroHealth,
+    int MaxHeroHealth,
+    int StartingMana,
+    int MaxMana,
+    int ManaGrantedPerTurn,
+    ManaGrantTiming ManaGrantTiming,
+    int InitialDrawCount,
+    int CardsDrawnOnTurnStart,
+    int StartingSeatIndex,
+    IReadOnlyList<GameRulesSeatOverrideDto> SeatOverrides);
+
+public sealed record GameRulesetSummaryDto(
+    string RulesetId,
+    string RulesetKey,
+    string DisplayName,
+    bool IsActive,
+    bool IsDefault,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset? UpdatedAt);
+
+public sealed record UpsertGameRulesSeatOverrideRequest(
+    [Range(0, 1)] int SeatIndex,
+    int AdditionalHeroHealth = 0,
+    int AdditionalMaxHeroHealth = 0,
+    int AdditionalStartingMana = 0,
+    int AdditionalMaxMana = 0,
+    int AdditionalManaPerTurn = 0,
+    int AdditionalCardsDrawnOnTurnStart = 0);
+
+public sealed record UpsertGameRulesetRequest(
+    [Required] string RulesetKey,
+    [Required] string DisplayName,
+    string? Description,
+    bool IsActive,
+    bool IsDefault,
+    [Range(1, 200)] int StartingHeroHealth,
+    [Range(1, 200)] int MaxHeroHealth,
+    [Range(0, 20)] int StartingMana,
+    [Range(0, 20)] int MaxMana,
+    [Range(0, 10)] int ManaGrantedPerTurn,
+    ManaGrantTiming ManaGrantTiming,
+    [Range(0, 20)] int InitialDrawCount,
+    [Range(0, 10)] int CardsDrawnOnTurnStart,
+    [Range(0, 1)] int StartingSeatIndex,
+    IReadOnlyList<UpsertGameRulesSeatOverrideRequest>? SeatOverrides = null);
+
 public sealed record CreatePrivateMatchRequest(
-    [property: Required] string PlayerId,
-    [property: Required] string DeckId,
-    string? MatchName);
+    [Required] string PlayerId,
+    [Required] string DeckId,
+    string? MatchName,
+    string? RulesetId = null);
 
 public sealed record JoinPrivateMatchRequest(
-    [property: Required] string PlayerId,
-    [property: Required] string DeckId,
-    [property: Required] string RoomCode);
+    [Required] string PlayerId,
+    [Required] string DeckId,
+    [Required] string RoomCode);
 
 public sealed record QueueForMatchRequest(
-    [property: Required] string PlayerId,
-    [property: Required] string DeckId,
+    [Required] string PlayerId,
+    [Required] string DeckId,
     QueueMode Mode,
-    int Rating = 1000);
+    int Rating = 1000,
+    string? RulesetId = null);
 
 public sealed record MatchReservationDto(
     string MatchId,
@@ -32,31 +102,33 @@ public sealed record MatchReservationDto(
     int SeatIndex,
     QueueMode Mode,
     bool WaitingForOpponent,
-    string Status);
+    string Status,
+    string RulesetId,
+    GameRulesDto Rules);
 
 public sealed record ConnectMatchRequest(
-    [property: Required] string PlayerId,
-    [property: Required] string MatchId,
-    [property: Required] string ReconnectToken);
+    [Required] string PlayerId,
+    [Required] string MatchId,
+    [Required] string ReconnectToken);
 
 public sealed record SetReadyRequest(
-    [property: Required] string MatchId,
-    [property: Required] string PlayerId,
+    [Required] string MatchId,
+    [Required] string PlayerId,
     bool IsReady);
 
 public sealed record PlayCardRequest(
-    [property: Required] string MatchId,
-    [property: Required] string PlayerId,
-    [property: Required] string RuntimeHandKey,
-    [property: Range(0, 2)] int SlotIndex);
+    [Required] string MatchId,
+    [Required] string PlayerId,
+    [Required] string RuntimeHandKey,
+    [Range(0, 2)] int SlotIndex);
 
 public sealed record EndTurnRequest(
-    [property: Required] string MatchId,
-    [property: Required] string PlayerId);
+    [Required] string MatchId,
+    [Required] string PlayerId);
 
 public sealed record ForfeitRequest(
-    [property: Required] string MatchId,
-    [property: Required] string PlayerId);
+    [Required] string MatchId,
+    [Required] string PlayerId);
 
 public sealed record MatchSummaryDto(
     string MatchId,
@@ -65,17 +137,19 @@ public sealed record MatchSummaryDto(
     int ConnectedPlayers,
     bool Started,
     bool Completed,
-    int? WinnerSeatIndex);
+    int? WinnerSeatIndex,
+    string RulesetId,
+    string RulesetName);
 
 public sealed record DeckUpsertRequest(
-    [property: Required] string PlayerId,
-    [property: Required] string DeckId,
-    [property: Required] string DisplayName,
-    [property: Required] IReadOnlyList<string> CardIds);
+    [Required] string PlayerId,
+    [Required] string DeckId,
+    [Required] string DisplayName,
+    [Required] IReadOnlyList<string> CardIds);
 
 public sealed record MatchCompletionRequest(
-    [property: Required] string PlayerId,
-    [property: Required] string OpponentId,
+    [Required] string PlayerId,
+    [Required] string OpponentId,
     bool PlayerWon,
     int DurationSeconds,
     int? PlayerRatingBefore = null,
@@ -90,13 +164,13 @@ public sealed record MatchActionDto(
     int ActionNumber,
     int Sequence,
     DateTime Timestamp,
-    [property: Required] string PlayerId,
-    [property: Required] string ActionType,
+    [Required] string PlayerId,
+    [Required] string ActionType,
     object? Data);
 
 public sealed record PostActionsRequest(
-    [property: Required] string MatchId,
-    [property: Required] List<MatchActionDto> Actions,
+    [Required] string MatchId,
+    [Required] List<MatchActionDto> Actions,
     int GlobalSequence,
     DateTime Timestamp);
 

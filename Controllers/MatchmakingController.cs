@@ -9,13 +9,26 @@ namespace CardDuel.ServerApi.Controllers;
 [ApiController]
 [Authorize]
 [Route("api/v1/matchmaking")]
-public sealed class MatchmakingController(IMatchService matchService) : ControllerBase
+public sealed class MatchmakingController(
+    IMatchService matchService,
+    IGameRulesetService gameRulesetService,
+    ILogger<MatchmakingController> logger) : ControllerBase
 {
     [HttpPost("private")]
-    public ActionResult<MatchReservationDto> CreatePrivate(CreatePrivateMatchRequest request)
+    public async Task<ActionResult<MatchReservationDto>> CreatePrivate(CreatePrivateMatchRequest request, CancellationToken cancellationToken)
     {
         EnsurePlayer(request.PlayerId);
-        return Ok(matchService.CreatePrivate(request.PlayerId, request.DeckId, request.MatchName));
+
+        try
+        {
+            var resolvedRules = await gameRulesetService.ResolveAsync(request.RulesetId, cancellationToken);
+            return Ok(matchService.CreatePrivate(request.PlayerId, request.DeckId, request.MatchName, resolvedRules));
+        }
+        catch (InvalidOperationException exception)
+        {
+            logger.LogWarning(exception, "Private match creation rejected for {PlayerId}", request.PlayerId);
+            return BadRequest(new { message = exception.Message });
+        }
     }
 
     [HttpPost("private/join")]
@@ -26,10 +39,29 @@ public sealed class MatchmakingController(IMatchService matchService) : Controll
     }
 
     [HttpPost("queue")]
-    public ActionResult<MatchReservationDto> Queue(QueueForMatchRequest request)
+    public async Task<ActionResult<MatchReservationDto>> Queue([FromBody] QueueForMatchRequest request, CancellationToken cancellationToken)
     {
         EnsurePlayer(request.PlayerId);
-        return Ok(matchService.Queue(request.PlayerId, request.DeckId, request.Mode, request.Rating));
+
+        if (request.Mode == QueueMode.Private)
+        {
+            return BadRequest(new { message = "Queue mode must be Casual or Ranked." });
+        }
+
+        try
+        {
+            var resolvedRules = await gameRulesetService.ResolveAsync(request.RulesetId, cancellationToken);
+            return Ok(matchService.Queue(request.PlayerId, request.DeckId, request.Mode, request.Rating, resolvedRules));
+        }
+        catch (InvalidOperationException exception)
+        {
+            logger.LogWarning(exception,
+                "Queue request rejected for {PlayerId} with deck {DeckId} in mode {Mode}",
+                request.PlayerId,
+                request.DeckId,
+                request.Mode);
+            return BadRequest(new { message = exception.Message });
+        }
     }
 
     private void EnsurePlayer(string playerId)

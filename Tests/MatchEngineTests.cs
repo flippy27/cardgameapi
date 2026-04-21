@@ -6,6 +6,29 @@ namespace CardDuel.ServerApi.Tests;
 
 public class MatchEngineTests
 {
+    private static GameRules CreateRules(
+        ManaGrantTiming manaGrantTiming = ManaGrantTiming.StartOfTurn,
+        IReadOnlyList<GameRulesSeatOverride>? seatOverrides = null)
+    {
+        return new GameRules(
+            RulesetId: "rules-default",
+            RulesetKey: "default",
+            DisplayName: "Default Rules",
+            Description: null,
+            IsActive: true,
+            IsDefault: true,
+            StartingHeroHealth: 20,
+            MaxHeroHealth: 20,
+            StartingMana: 1,
+            MaxMana: 10,
+            ManaGrantedPerTurn: 1,
+            ManaGrantTiming: manaGrantTiming,
+            InitialDrawCount: 4,
+            CardsDrawnOnTurnStart: 1,
+            StartingSeatIndex: 0,
+            SeatOverrides: seatOverrides ?? Array.Empty<GameRulesSeatOverride>());
+    }
+
     private ServerCardDefinition CreateCard(string id, string name, int mana = 2, int attack = 2, int health = 2)
     {
         return new ServerCardDefinition(
@@ -15,7 +38,7 @@ public class MatchEngineTests
     [Fact]
     public void ReserveSeat_FilledThenTransitionsToWaitingForReady()
     {
-        var engine = new MatchEngine("match1", "ABC123", QueueMode.Casual, TimeSpan.FromSeconds(20));
+        var engine = new MatchEngine("match1", "ABC123", QueueMode.Casual, TimeSpan.FromSeconds(20), CreateRules());
         var cards = new[] { CreateCard("card1", "Card 1"), CreateCard("card2", "Card 2") };
 
         var res = engine.ReserveSeat("player1", "deck1", cards);
@@ -28,7 +51,7 @@ public class MatchEngineTests
     [Fact]
     public void SetReady_StartsMatchWhenBothReady()
     {
-        var engine = new MatchEngine("match1", "ABC123", QueueMode.Casual, TimeSpan.FromSeconds(20));
+        var engine = new MatchEngine("match1", "ABC123", QueueMode.Casual, TimeSpan.FromSeconds(20), CreateRules());
         var cards = new[] { CreateCard("card1", "Card 1"), CreateCard("card2", "Card 2") };
 
         engine.ReserveSeat("player1", "deck1", cards);
@@ -44,7 +67,7 @@ public class MatchEngineTests
     [Fact]
     public void PlayCard_ManaCostIsDeducted()
     {
-        var engine = new MatchEngine("match1", "ABC123", QueueMode.Casual, TimeSpan.FromSeconds(20));
+        var engine = new MatchEngine("match1", "ABC123", QueueMode.Casual, TimeSpan.FromSeconds(20), CreateRules());
         var cards = new[] { CreateCard("card1", "Card 1", mana: 1) };
 
         engine.ReserveSeat("player1", "deck1", cards);
@@ -62,5 +85,106 @@ public class MatchEngineTests
         // Mana reduced, card removed from hand
         Assert.Equal(0, seat.Mana);
         Assert.DoesNotContain(card, seat.Hand);
+    }
+
+    [Fact]
+    public void CreateSnapshot_ExposesWhoseTurnItIsForTheLocalPlayer()
+    {
+        var engine = new MatchEngine("match1", "ABC123", QueueMode.Casual, TimeSpan.FromSeconds(20), CreateRules());
+        var cards = new[] { CreateCard("card1", "Card 1", mana: 1) };
+
+        engine.ReserveSeat("player1", "deck1", cards);
+        engine.ReserveSeat("player2", "deck2", cards);
+        engine.SetReady("player1", true);
+        engine.SetReady("player2", true);
+
+        var playerOneSnapshot = engine.CreateSnapshotForSeat(0);
+        var playerTwoSnapshot = engine.CreateSnapshotForSeat(1);
+
+        Assert.Equal("player1", playerOneSnapshot.ActivePlayerId);
+        Assert.True(playerOneSnapshot.IsLocalPlayersTurn);
+        Assert.False(playerTwoSnapshot.IsLocalPlayersTurn);
+        Assert.Equal("Your turn.", playerOneSnapshot.StatusMessage);
+        Assert.Equal("Opponent's turn.", playerTwoSnapshot.StatusMessage);
+    }
+
+    [Fact]
+    public void EndTurn_WhenWrongPlayer_ThrowsMessageWithActivePlayer()
+    {
+        var engine = new MatchEngine("match1", "ABC123", QueueMode.Casual, TimeSpan.FromSeconds(20), CreateRules());
+        var cards = new[] { CreateCard("card1", "Card 1", mana: 1) };
+
+        engine.ReserveSeat("player1", "deck1", cards);
+        engine.ReserveSeat("player2", "deck2", cards);
+        engine.SetReady("player1", true);
+        engine.SetReady("player2", true);
+
+        var exception = Assert.Throws<InvalidOperationException>(() => engine.EndTurn("player2"));
+        Assert.Contains("player1", exception.Message);
+    }
+
+    [Fact]
+    public void CreateSnapshot_ExposesRulesMetadata()
+    {
+        var engine = new MatchEngine("match1", "ABC123", QueueMode.Casual, TimeSpan.FromSeconds(20), CreateRules());
+        var cards = new[] { CreateCard("card1", "Card 1", mana: 1) };
+
+        engine.ReserveSeat("player1", "deck1", cards);
+        engine.ReserveSeat("player2", "deck2", cards);
+        engine.SetReady("player1", true);
+        engine.SetReady("player2", true);
+
+        var snapshot = engine.CreateSnapshotForSeat(0);
+
+        Assert.Equal("rules-default", snapshot.RulesetId);
+        Assert.Equal("rules-default", snapshot.Rules.RulesetId);
+        Assert.Equal("Default Rules", snapshot.Rules.DisplayName);
+    }
+
+    [Fact]
+    public void SeatOverrides_AffectInitialSeatState()
+    {
+        var rules = CreateRules(seatOverrides: new[]
+        {
+            new GameRulesSeatOverride(
+                SeatIndex: 1,
+                AdditionalHeroHealth: 5,
+                AdditionalMaxHeroHealth: 5,
+                AdditionalStartingMana: 2,
+                AdditionalMaxMana: 2,
+                AdditionalManaPerTurn: 1,
+                AdditionalCardsDrawnOnTurnStart: 1)
+        });
+        var engine = new MatchEngine("match1", "ABC123", QueueMode.Casual, TimeSpan.FromSeconds(20), rules);
+        var cards = new[] { CreateCard("card1", "Card 1", mana: 1) };
+
+        engine.ReserveSeat("player1", "deck1", cards);
+        engine.ReserveSeat("player2", "deck2", cards);
+
+        Assert.Equal(20, engine.Seats[0].HeroHealth);
+        Assert.Equal(1, engine.Seats[0].Mana);
+        Assert.Equal(25, engine.Seats[1].HeroHealth);
+        Assert.Equal(3, engine.Seats[1].Mana);
+        Assert.Equal(3, engine.Seats[1].MaxMana);
+    }
+
+    [Fact]
+    public void EndTurn_WithEndOfTurnManaGrant_ChargesEndingPlayerInsteadOfNextPlayer()
+    {
+        var engine = new MatchEngine("match1", "ABC123", QueueMode.Casual, TimeSpan.FromSeconds(20), CreateRules(manaGrantTiming: ManaGrantTiming.EndOfTurn));
+        var cards = new[] { CreateCard("card1", "Card 1", mana: 1) };
+
+        engine.ReserveSeat("player1", "deck1", cards);
+        engine.ReserveSeat("player2", "deck2", cards);
+        engine.SetReady("player1", true);
+        engine.SetReady("player2", true);
+
+        engine.EndTurn("player1");
+
+        Assert.Equal(2, engine.Seats[0].Mana);
+        Assert.Equal(2, engine.Seats[0].MaxMana);
+        Assert.Equal(1, engine.Seats[1].Mana);
+        Assert.Equal(1, engine.Seats[1].MaxMana);
+        Assert.Equal(1, engine.ActiveSeatIndex);
     }
 }

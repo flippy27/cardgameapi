@@ -283,6 +283,138 @@ namespace CardDuel.ServerApi.Migrations
                     b.ToTable("effects", (string)null);
                 });
 
+            modelBuilder.Entity("CardDuel.ServerApi.Infrastructure.Models.GameRuleset", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("text")
+                        .HasColumnName("id");
+
+                    b.Property<int>("CardsDrawnOnTurnStart")
+                        .HasColumnType("integer")
+                        .HasColumnName("cards_drawn_on_turn_start");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("Description")
+                        .HasMaxLength(1024)
+                        .HasColumnType("character varying(1024)")
+                        .HasColumnName("description");
+
+                    b.Property<string>("DisplayName")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("display_name");
+
+                    b.Property<int>("InitialDrawCount")
+                        .HasColumnType("integer")
+                        .HasColumnName("initial_draw_count");
+
+                    b.Property<bool>("IsActive")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_active");
+
+                    b.Property<bool>("IsDefault")
+                        .HasColumnType("boolean")
+                        .HasColumnName("is_default");
+
+                    b.Property<int>("ManaGrantTiming")
+                        .HasColumnType("integer")
+                        .HasColumnName("mana_grant_timing");
+
+                    b.Property<int>("ManaGrantedPerTurn")
+                        .HasColumnType("integer")
+                        .HasColumnName("mana_granted_per_turn");
+
+                    b.Property<int>("MaxHeroHealth")
+                        .HasColumnType("integer")
+                        .HasColumnName("max_hero_health");
+
+                    b.Property<int>("MaxMana")
+                        .HasColumnType("integer")
+                        .HasColumnName("max_mana");
+
+                    b.Property<string>("RulesetKey")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("ruleset_key");
+
+                    b.Property<int>("StartingHeroHealth")
+                        .HasColumnType("integer")
+                        .HasColumnName("starting_hero_health");
+
+                    b.Property<int>("StartingMana")
+                        .HasColumnType("integer")
+                        .HasColumnName("starting_mana");
+
+                    b.Property<int>("StartingSeatIndex")
+                        .HasColumnType("integer")
+                        .HasColumnName("starting_seat_index");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("IsDefault");
+
+                    b.HasIndex("RulesetKey")
+                        .IsUnique();
+
+                    b.ToTable("game_rulesets", (string)null);
+                });
+
+            modelBuilder.Entity("CardDuel.ServerApi.Infrastructure.Models.GameRulesetSeatOverride", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("text")
+                        .HasColumnName("id");
+
+                    b.Property<int>("AdditionalCardsDrawnOnTurnStart")
+                        .HasColumnType("integer")
+                        .HasColumnName("additional_cards_drawn_on_turn_start");
+
+                    b.Property<int>("AdditionalHeroHealth")
+                        .HasColumnType("integer")
+                        .HasColumnName("additional_hero_health");
+
+                    b.Property<int>("AdditionalManaPerTurn")
+                        .HasColumnType("integer")
+                        .HasColumnName("additional_mana_per_turn");
+
+                    b.Property<int>("AdditionalMaxHeroHealth")
+                        .HasColumnType("integer")
+                        .HasColumnName("additional_max_hero_health");
+
+                    b.Property<int>("AdditionalMaxMana")
+                        .HasColumnType("integer")
+                        .HasColumnName("additional_max_mana");
+
+                    b.Property<int>("AdditionalStartingMana")
+                        .HasColumnType("integer")
+                        .HasColumnName("additional_starting_mana");
+
+                    b.Property<string>("GameRulesetId")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("game_ruleset_id");
+
+                    b.Property<int>("SeatIndex")
+                        .HasColumnType("integer")
+                        .HasColumnName("seat_index");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("GameRulesetId", "SeatIndex")
+                        .IsUnique();
+
+                    b.ToTable("game_ruleset_seat_overrides", (string)null);
+                });
+
             modelBuilder.Entity("CardDuel.ServerApi.Infrastructure.Models.MatchAction", b =>
                 {
                     b.Property<string>("Id")
@@ -345,6 +477,23 @@ namespace CardDuel.ServerApi.Migrations
                     b.Property<int>("DurationSeconds")
                         .HasColumnType("integer")
                         .HasColumnName("duration_seconds");
+
+                    b.Property<string>("GameRulesSnapshotJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("game_rules_snapshot_json");
+
+                    b.Property<string>("GameRulesetId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("game_ruleset_id");
+
+                    b.Property<string>("GameRulesetName")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("game_ruleset_name");
 
                     b.Property<string>("MatchId")
                         .IsRequired()
@@ -412,6 +561,8 @@ namespace CardDuel.ServerApi.Migrations
 
                     b.HasIndex("MatchId")
                         .IsUnique();
+
+                    b.HasIndex("GameRulesetId");
 
                     b.HasIndex("Player1Id", "CreatedAt");
 
@@ -630,6 +781,17 @@ namespace CardDuel.ServerApi.Migrations
                     b.Navigation("AbilityDefinition");
                 });
 
+            modelBuilder.Entity("CardDuel.ServerApi.Infrastructure.Models.GameRulesetSeatOverride", b =>
+                {
+                    b.HasOne("CardDuel.ServerApi.Infrastructure.Models.GameRuleset", "GameRuleset")
+                        .WithMany("SeatOverrides")
+                        .HasForeignKey("GameRulesetId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("GameRuleset");
+                });
+
             modelBuilder.Entity("CardDuel.ServerApi.Infrastructure.Models.PlayerRating", b =>
                 {
                     b.HasOne("CardDuel.ServerApi.Infrastructure.Models.UserAccount", "User")
@@ -651,6 +813,11 @@ namespace CardDuel.ServerApi.Migrations
             modelBuilder.Entity("CardDuel.ServerApi.Infrastructure.Models.CardDefinition", b =>
                 {
                     b.Navigation("CardAbilities");
+                });
+
+            modelBuilder.Entity("CardDuel.ServerApi.Infrastructure.Models.GameRuleset", b =>
+                {
+                    b.Navigation("SeatOverrides");
                 });
 
             modelBuilder.Entity("CardDuel.ServerApi.Infrastructure.Models.UserAccount", b =>

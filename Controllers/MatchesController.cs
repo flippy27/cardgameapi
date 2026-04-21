@@ -1,22 +1,50 @@
 using System.Security.Claims;
+using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 using CardDuel.ServerApi.Contracts;
 using CardDuel.ServerApi.Services;
 using CardDuel.ServerApi.Game;
+using CardDuel.ServerApi.Infrastructure;
 
 namespace CardDuel.ServerApi.Controllers;
 
 [ApiController]
 [Authorize]
 [Route("api/v1/matches")]
-public sealed class MatchesController(IMatchService matchService) : ControllerBase
+public sealed class MatchesController(IMatchService matchService, AppDbContext dbContext) : ControllerBase
 {
     [HttpGet]
     public IActionResult List() => Ok(matchService.ListMatches());
 
     [HttpGet("{matchId}/summary")]
     public ActionResult<MatchSummaryDto> GetSummary(string matchId) => Ok(matchService.GetSummary(matchId));
+
+    [HttpGet("{matchId}/rules/{playerId}")]
+    public async Task<ActionResult<GameRulesDto>> GetRules(string matchId, string playerId, CancellationToken cancellationToken)
+    {
+        EnsurePlayer(playerId);
+
+        var match = await dbContext.Matches
+            .AsNoTracking()
+            .FirstOrDefaultAsync(model => model.MatchId == matchId && (model.Player1Id == playerId || model.Player2Id == playerId), cancellationToken);
+
+        if (match == null)
+        {
+            return NotFound();
+        }
+
+        if (string.IsNullOrWhiteSpace(match.GameRulesSnapshotJson))
+        {
+            return NotFound(new { message = "No rules snapshot was recorded for this match." });
+        }
+
+        var snapshot = JsonSerializer.Deserialize<GameRulesDto>(match.GameRulesSnapshotJson);
+        return snapshot == null
+            ? Problem(title: "Rules snapshot could not be read for this match.")
+            : Ok(snapshot);
+    }
 
     [HttpGet("{matchId}/snapshot/{playerId}")]
     public ActionResult<MatchSnapshot> GetSnapshot(string matchId, string playerId)
@@ -29,28 +57,28 @@ public sealed class MatchesController(IMatchService matchService) : ControllerBa
     public ActionResult<MatchSnapshot> SetReady(string matchId, SetReadyRequest request)
     {
         EnsurePlayer(request.PlayerId);
-        return Ok(matchService.SetReady(matchId, request.PlayerId, request.IsReady));
+        return ExecuteMatchAction(() => matchService.SetReady(matchId, request.PlayerId, request.IsReady));
     }
 
     [HttpPost("{matchId}/play")]
     public ActionResult<MatchSnapshot> PlayCard(string matchId, PlayCardRequest request)
     {
         EnsurePlayer(request.PlayerId);
-        return Ok(matchService.PlayCard(matchId, request.PlayerId, request.RuntimeHandKey, request.SlotIndex));
+        return ExecuteMatchAction(() => matchService.PlayCard(matchId, request.PlayerId, request.RuntimeHandKey, request.SlotIndex));
     }
 
     [HttpPost("{matchId}/end-turn")]
     public ActionResult<MatchSnapshot> EndTurn(string matchId, EndTurnRequest request)
     {
         EnsurePlayer(request.PlayerId);
-        return Ok(matchService.EndTurn(matchId, request.PlayerId));
+        return ExecuteMatchAction(() => matchService.EndTurn(matchId, request.PlayerId));
     }
 
     [HttpPost("{matchId}/forfeit")]
     public ActionResult<MatchSnapshot> Forfeit(string matchId, ForfeitRequest request)
     {
         EnsurePlayer(request.PlayerId);
-        return Ok(matchService.Forfeit(matchId, request.PlayerId));
+        return ExecuteMatchAction(() => matchService.Forfeit(matchId, request.PlayerId));
     }
 
     [HttpPost("{matchId}/complete")]
@@ -77,6 +105,18 @@ public sealed class MatchesController(IMatchService matchService) : ControllerBa
         if (!string.Equals(authenticated, playerId, StringComparison.Ordinal))
         {
             throw new UnauthorizedAccessException("Authenticated player mismatch.");
+        }
+    }
+
+    private ActionResult<MatchSnapshot> ExecuteMatchAction(Func<MatchSnapshot> action)
+    {
+        try
+        {
+            return Ok(action());
+        }
+        catch (InvalidOperationException exception)
+        {
+            return BadRequest(new { message = exception.Message });
         }
     }
 }

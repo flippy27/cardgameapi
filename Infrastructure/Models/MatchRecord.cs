@@ -11,6 +11,9 @@ public sealed class MatchRecord
     public string Player2Id { get; set; } = string.Empty;
     public string? WinnerId { get; set; }
     public QueueMode Mode { get; set; }
+    public string GameRulesetId { get; set; } = string.Empty;
+    public string GameRulesetName { get; set; } = string.Empty;
+    public string GameRulesSnapshotJson { get; set; } = string.Empty;
     public int DurationSeconds { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? CompletedAt { get; set; }

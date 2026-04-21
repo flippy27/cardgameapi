@@ -8,6 +8,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<UserAccount> Users { get; set; } = null!;
     public DbSet<PlayerDeck> Decks { get; set; } = null!;
     public DbSet<MatchRecord> Matches { get; set; } = null!;
+    public DbSet<GameRuleset> GameRulesets { get; set; } = null!;
+    public DbSet<GameRulesetSeatOverride> GameRulesetSeatOverrides { get; set; } = null!;
     public DbSet<PlayerRating> Ratings { get; set; } = null!;
     public DbSet<ReplayLog> ReplayLogs { get; set; } = null!;
     public DbSet<CardDefinition> Cards { get; set; } = null!;
@@ -69,6 +71,9 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             e.Property(x => x.Player2Id).HasColumnName("player2_id");
             e.Property(x => x.WinnerId).HasColumnName("winner_id");
             e.Property(x => x.Mode).HasColumnName("mode");
+            e.Property(x => x.GameRulesetId).HasColumnName("game_ruleset_id").HasMaxLength(64);
+            e.Property(x => x.GameRulesetName).HasColumnName("game_ruleset_name").HasMaxLength(128);
+            e.Property(x => x.GameRulesSnapshotJson).HasColumnName("game_rules_snapshot_json").HasColumnType("jsonb");
             e.Property(x => x.DurationSeconds).HasColumnName("duration_seconds");
             e.Property(x => x.CreatedAt).HasColumnName("created_at");
             e.Property(x => x.CompletedAt).HasColumnName("completed_at");
@@ -83,6 +88,52 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             e.HasIndex(x => x.MatchId).IsUnique();
             e.HasIndex(x => new { x.Player1Id, x.CreatedAt });
             e.HasIndex(x => new { x.Player2Id, x.CreatedAt });
+            e.HasIndex(x => x.GameRulesetId);
+        });
+
+        modelBuilder.Entity<GameRuleset>(e =>
+        {
+            e.ToTable("game_rulesets");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id");
+            e.Property(x => x.RulesetKey).HasColumnName("ruleset_key").HasMaxLength(64);
+            e.Property(x => x.DisplayName).HasColumnName("display_name").HasMaxLength(128);
+            e.Property(x => x.Description).HasColumnName("description").HasMaxLength(1024);
+            e.Property(x => x.IsActive).HasColumnName("is_active");
+            e.Property(x => x.IsDefault).HasColumnName("is_default");
+            e.Property(x => x.StartingHeroHealth).HasColumnName("starting_hero_health");
+            e.Property(x => x.MaxHeroHealth).HasColumnName("max_hero_health");
+            e.Property(x => x.StartingMana).HasColumnName("starting_mana");
+            e.Property(x => x.MaxMana).HasColumnName("max_mana");
+            e.Property(x => x.ManaGrantedPerTurn).HasColumnName("mana_granted_per_turn");
+            e.Property(x => x.ManaGrantTiming).HasColumnName("mana_grant_timing");
+            e.Property(x => x.InitialDrawCount).HasColumnName("initial_draw_count");
+            e.Property(x => x.CardsDrawnOnTurnStart).HasColumnName("cards_drawn_on_turn_start");
+            e.Property(x => x.StartingSeatIndex).HasColumnName("starting_seat_index");
+            e.Property(x => x.CreatedAt).HasColumnName("created_at");
+            e.Property(x => x.UpdatedAt).HasColumnName("updated_at");
+            e.HasIndex(x => x.RulesetKey).IsUnique();
+            e.HasIndex(x => x.IsDefault);
+            e.HasMany(x => x.SeatOverrides)
+                .WithOne(x => x.GameRuleset)
+                .HasForeignKey(x => x.GameRulesetId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<GameRulesetSeatOverride>(e =>
+        {
+            e.ToTable("game_ruleset_seat_overrides");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id");
+            e.Property(x => x.GameRulesetId).HasColumnName("game_ruleset_id");
+            e.Property(x => x.SeatIndex).HasColumnName("seat_index");
+            e.Property(x => x.AdditionalHeroHealth).HasColumnName("additional_hero_health");
+            e.Property(x => x.AdditionalMaxHeroHealth).HasColumnName("additional_max_hero_health");
+            e.Property(x => x.AdditionalStartingMana).HasColumnName("additional_starting_mana");
+            e.Property(x => x.AdditionalMaxMana).HasColumnName("additional_max_mana");
+            e.Property(x => x.AdditionalManaPerTurn).HasColumnName("additional_mana_per_turn");
+            e.Property(x => x.AdditionalCardsDrawnOnTurnStart).HasColumnName("additional_cards_drawn_on_turn_start");
+            e.HasIndex(x => new { x.GameRulesetId, x.SeatIndex }).IsUnique();
         });
 
         modelBuilder.Entity<PlayerRating>(e =>

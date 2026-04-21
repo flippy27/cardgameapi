@@ -219,9 +219,13 @@ public sealed record MatchSnapshot(
     string MatchId,
     string RoomCode,
     QueueMode Mode,
+    string RulesetId,
+    GameRulesDto Rules,
     MatchPhase Phase,
     int LocalSeatIndex,
     int ActiveSeatIndex,
+    string? ActivePlayerId,
+    bool IsLocalPlayersTurn,
     int TurnNumber,
     int ConnectedPlayers,
     int? WinnerSeatIndex,
@@ -238,16 +242,20 @@ public sealed class MatchEngine
     private readonly QueueMode _mode;
     private readonly string _matchId;
     private readonly string _roomCode;
+    private readonly GameRules _rules;
+    private readonly GameRulesDto _rulesDto;
     private readonly RuntimeSeatState[] _seats = { new() { SeatIndex = 0 }, new() { SeatIndex = 1 } };
     private readonly List<string> _logs = new();
     private readonly ConcurrentDictionary<string, string> _spectators = new();
 
-    public MatchEngine(string matchId, string roomCode, QueueMode mode, TimeSpan disconnectGrace)
+    public MatchEngine(string matchId, string roomCode, QueueMode mode, TimeSpan disconnectGrace, GameRules rules)
     {
         _matchId = matchId;
         _roomCode = roomCode;
         _mode = mode;
         _disconnectGrace = disconnectGrace;
+        _rules = rules;
+        _rulesDto = rules.ToDto();
         Phase = MatchPhase.WaitingForPlayers;
     }
 
@@ -261,6 +269,8 @@ public sealed class MatchEngine
     public string RoomCode => _roomCode;
     public QueueMode Mode => _mode;
     public string MatchId => _matchId;
+    public GameRules Rules => _rules;
+    public GameRulesDto RulesDto => _rulesDto;
 
     public IReadOnlyList<RuntimeSeatState> Seats => _seats;
 
@@ -415,12 +425,26 @@ public sealed class MatchEngine
 
         if (!DuelEnded)
         {
+            if (_rules.ManaGrantTiming == ManaGrantTiming.EndOfTurn)
+            {
+                GrantTurnMana(seat);
+            }
+
             ActiveSeatIndex = 1 - ActiveSeatIndex;
             TurnNumber += 1;
             var next = _seats[ActiveSeatIndex];
-            next.MaxMana = Math.Min(10, next.MaxMana + 1);
-            next.Mana = next.MaxMana;
-            DrawCard(next);
+
+            if (_rules.ManaGrantTiming == ManaGrantTiming.StartOfTurn)
+            {
+                GrantTurnMana(next);
+            }
+
+            var cardsToDraw = _rules.GetSeatRules(next.SeatIndex).CardsDrawnOnTurnStart;
+            for (var drawIndex = 0; drawIndex < cardsToDraw; drawIndex++)
+            {
+                DrawCard(next);
+            }
+
             ResolveTurnAbilities(next.SeatIndex, TriggerKind.OnTurnStart);
         }
 
@@ -480,14 +504,25 @@ public sealed class MatchEngine
         var reconnectGrace = otherSeat is { Connected: false, DisconnectedAt: not null } && Phase == MatchPhase.InProgress
             ? Math.Max(0d, (_disconnectGrace - (DateTimeOffset.UtcNow - otherSeat.DisconnectedAt.Value)).TotalSeconds)
             : 0d;
+        var activePlayerId = Phase == MatchPhase.InProgress && ActiveSeatIndex is 0 or 1
+            ? _seats[ActiveSeatIndex].PlayerId
+            : null;
+        var isLocalPlayersTurn = Phase == MatchPhase.InProgress
+            && !DuelEnded
+            && localSeatIndex is 0 or 1
+            && localSeatIndex == ActiveSeatIndex;
 
         return new MatchSnapshot(
             _matchId,
             _roomCode,
             _mode,
+            _rules.RulesetId,
+            _rulesDto,
             Phase,
             localSeatIndex,
             ActiveSeatIndex,
+            activePlayerId,
+            isLocalPlayersTurn,
             TurnNumber,
             _seats.Count(x => x.Connected),
             WinnerSeatIndex,
@@ -501,7 +536,16 @@ public sealed class MatchEngine
 
     public MatchSummaryDto ToSummary()
     {
-        return new MatchSummaryDto(_matchId, _roomCode, _mode, _seats.Count(x => x.Connected), Phase == MatchPhase.InProgress, DuelEnded, WinnerSeatIndex);
+        return new MatchSummaryDto(
+            _matchId,
+            _roomCode,
+            _mode,
+            _seats.Count(x => x.Connected),
+            Phase == MatchPhase.InProgress,
+            DuelEnded,
+            WinnerSeatIndex,
+            _rules.RulesetId,
+            _rules.DisplayName);
     }
 
     private void StartMatch()
@@ -513,13 +557,13 @@ public sealed class MatchEngine
             ShuffleDeck(seat, MatchSeed ^ ((seat.SeatIndex + 1) * 7919));
         }
 
-        ActiveSeatIndex = 0;
+        ActiveSeatIndex = _rules.StartingSeatIndex;
         TurnNumber = 1;
         Phase = MatchPhase.InProgress;
         DuelEnded = false;
         WinnerSeatIndex = null;
 
-        for (var i = 0; i < 4; i++)
+        for (var i = 0; i < _rules.InitialDrawCount; i++)
         {
             DrawCard(_seats[0]);
             DrawCard(_seats[1]);
@@ -530,9 +574,10 @@ public sealed class MatchEngine
 
     private void ResetSeatState(RuntimeSeatState seat)
     {
-        seat.HeroHealth = 20;
-        seat.Mana = 1;
-        seat.MaxMana = 1;
+        var seatRules = _rules.GetSeatRules(seat.SeatIndex);
+        seat.HeroHealth = seatRules.HeroHealth;
+        seat.Mana = seatRules.StartingMana;
+        seat.MaxMana = Math.Min(seatRules.MaxMana, seatRules.StartingMana);
         seat.Hand.Clear();
         seat.Board[BoardSlot.Front] = null;
         seat.Board[BoardSlot.BackLeft] = null;
@@ -574,7 +619,9 @@ public sealed class MatchEngine
         var seat = GetSeat(playerId);
         if (seat.SeatIndex != ActiveSeatIndex)
         {
-            throw new InvalidOperationException("It is not this player's turn.");
+            var activePlayerId = ActiveSeatIndex is 0 or 1 ? _seats[ActiveSeatIndex].PlayerId : "unknown";
+            throw new InvalidOperationException(
+                $"It is not this player's turn. Active player is '{activePlayerId}' in seat {ActiveSeatIndex}.");
         }
     }
 
@@ -787,7 +834,9 @@ public sealed class MatchEngine
             seat.SeatIndex,
             _mode,
             waitingForOpponent,
-            waitingForOpponent ? "waiting_for_opponent" : "joined");
+            waitingForOpponent ? "waiting_for_opponent" : "joined",
+            _rules.RulesetId,
+            _rulesDto);
     }
 
     private string BuildStatus(int localSeatIndex)
@@ -798,7 +847,8 @@ public sealed class MatchEngine
             MatchPhase.WaitingForPlayers => "Waiting for second player.",
             MatchPhase.WaitingForReady => $"Ready up. Opponent ready: {(remote?.Ready == true ? "yes" : "no")}.",
             MatchPhase.InProgress when remote is { Connected: false } => $"Opponent disconnected. Rejoin window: {Math.Max(0d, (_disconnectGrace - (DateTimeOffset.UtcNow - remote.DisconnectedAt!.Value)).TotalSeconds):0}s.",
-            MatchPhase.InProgress => "Match in progress.",
+            MatchPhase.InProgress when localSeatIndex == ActiveSeatIndex => "Your turn.",
+            MatchPhase.InProgress => "Opponent's turn.",
             MatchPhase.Completed when WinnerSeatIndex == localSeatIndex => "Victory.",
             MatchPhase.Completed => "Defeat.",
             _ => string.Empty
@@ -811,5 +861,12 @@ public sealed class MatchEngine
         using var sha = SHA256.Create();
         var bytes = sha.ComputeHash(Encoding.UTF8.GetBytes(raw));
         return string.Concat(bytes.Select(b => b.ToString("x2")));
+    }
+
+    private void GrantTurnMana(RuntimeSeatState seat)
+    {
+        var seatRules = _rules.GetSeatRules(seat.SeatIndex);
+        seat.MaxMana = Math.Min(seatRules.MaxMana, seat.MaxMana + seatRules.ManaGrantedPerTurn);
+        seat.Mana = seat.MaxMana;
     }
 }
