@@ -23,4 +23,5 @@ public sealed class GameRuleset
     public DateTimeOffset? UpdatedAt { get; set; }
 
     public ICollection<GameRulesetSeatOverride> SeatOverrides { get; set; } = new List<GameRulesetSeatOverride>();
+    public ICollection<MatchmakingModeRulesetAssignment> MatchmakingModeAssignments { get; set; } = new List<MatchmakingModeRulesetAssignment>();
 }

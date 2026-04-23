@@ -9,12 +9,15 @@ namespace CardDuel.ServerApi.Services;
 public interface IGameRulesetService
 {
     Task<IReadOnlyList<GameRulesetSummaryDto>> ListAsync(CancellationToken cancellationToken = default);
+    Task<IReadOnlyList<MatchmakingModeRulesetDto>> ListModeAssignmentsAsync(CancellationToken cancellationToken = default);
     Task<GameRulesDto?> GetAsync(string rulesetId, CancellationToken cancellationToken = default);
     Task<GameRulesDto> GetDefaultAsync(CancellationToken cancellationToken = default);
     Task<ResolvedGameRules> ResolveAsync(string? requestedRulesetId, CancellationToken cancellationToken = default);
+    Task<ResolvedGameRules> ResolveForModeAsync(QueueMode mode, CancellationToken cancellationToken = default);
     Task<GameRulesDto> CreateAsync(UpsertGameRulesetRequest request, CancellationToken cancellationToken = default);
     Task<GameRulesDto?> UpdateAsync(string rulesetId, UpsertGameRulesetRequest request, CancellationToken cancellationToken = default);
     Task<GameRulesDto?> ActivateAsync(string rulesetId, CancellationToken cancellationToken = default);
+    Task<MatchmakingModeRulesetDto?> AssignModeAsync(QueueMode mode, string rulesetId, CancellationToken cancellationToken = default);
 }
 
 public sealed class GameRulesetService(AppDbContext dbContext) : IGameRulesetService
@@ -33,6 +36,23 @@ public sealed class GameRulesetService(AppDbContext dbContext) : IGameRulesetSer
                 ruleset.IsDefault,
                 ruleset.CreatedAt,
                 ruleset.UpdatedAt))
+            .ToListAsync(cancellationToken);
+    }
+
+    public async Task<IReadOnlyList<MatchmakingModeRulesetDto>> ListModeAssignmentsAsync(CancellationToken cancellationToken = default)
+    {
+        return await dbContext.MatchmakingModeRulesetAssignments
+            .AsNoTracking()
+            .Include(assignment => assignment.Ruleset)
+            .OrderBy(assignment => assignment.Mode)
+            .Select(assignment => new MatchmakingModeRulesetDto(
+                assignment.Mode,
+                assignment.RulesetId,
+                assignment.Ruleset!.RulesetKey,
+                assignment.Ruleset.DisplayName,
+                assignment.Ruleset.IsActive,
+                assignment.CreatedAt,
+                assignment.UpdatedAt))
             .ToListAsync(cancellationToken);
     }
 
@@ -70,6 +90,22 @@ public sealed class GameRulesetService(AppDbContext dbContext) : IGameRulesetSer
 
         var rules = GameRules.FromEntity(entity);
         return new ResolvedGameRules(entity.Id, entity.DisplayName, rules, rules.ToSnapshotJson());
+    }
+
+    public async Task<ResolvedGameRules> ResolveForModeAsync(QueueMode mode, CancellationToken cancellationToken = default)
+    {
+        var assignment = await dbContext.MatchmakingModeRulesetAssignments
+            .AsNoTracking()
+            .Include(current => current.Ruleset)
+            .FirstOrDefaultAsync(current => current.Mode == mode, cancellationToken);
+
+        if (assignment?.Ruleset == null || !assignment.Ruleset.IsActive)
+        {
+            throw new InvalidOperationException($"No active ruleset is assigned for matchmaking mode '{mode}'.");
+        }
+
+        var rules = GameRules.FromEntity(assignment.Ruleset);
+        return new ResolvedGameRules(assignment.Ruleset.Id, assignment.Ruleset.DisplayName, rules, rules.ToSnapshotJson());
     }
 
     public async Task<GameRulesDto> CreateAsync(UpsertGameRulesetRequest request, CancellationToken cancellationToken = default)
@@ -130,6 +166,52 @@ public sealed class GameRulesetService(AppDbContext dbContext) : IGameRulesetSer
         await NormalizeDefaultStateAsync(entity, cancellationToken);
         await dbContext.SaveChangesAsync(cancellationToken);
         return GameRules.FromEntity(entity).ToDto();
+    }
+
+    public async Task<MatchmakingModeRulesetDto?> AssignModeAsync(QueueMode mode, string rulesetId, CancellationToken cancellationToken = default)
+    {
+        var ruleset = await dbContext.GameRulesets
+            .FirstOrDefaultAsync(current => current.Id == rulesetId, cancellationToken);
+
+        if (ruleset == null)
+        {
+            return null;
+        }
+
+        if (!ruleset.IsActive)
+        {
+            throw new InvalidOperationException("Cannot assign an inactive ruleset to a matchmaking mode.");
+        }
+
+        var assignment = await dbContext.MatchmakingModeRulesetAssignments
+            .Include(current => current.Ruleset)
+            .FirstOrDefaultAsync(current => current.Mode == mode, cancellationToken);
+
+        if (assignment == null)
+        {
+            assignment = new MatchmakingModeRulesetAssignment
+            {
+                Mode = mode,
+                RulesetId = ruleset.Id
+            };
+            dbContext.MatchmakingModeRulesetAssignments.Add(assignment);
+        }
+        else
+        {
+            assignment.RulesetId = ruleset.Id;
+            assignment.UpdatedAt = DateTimeOffset.UtcNow;
+        }
+
+        await dbContext.SaveChangesAsync(cancellationToken);
+
+        return new MatchmakingModeRulesetDto(
+            mode,
+            ruleset.Id,
+            ruleset.RulesetKey,
+            ruleset.DisplayName,
+            ruleset.IsActive,
+            assignment.CreatedAt,
+            assignment.UpdatedAt);
     }
 
     private IQueryable<GameRuleset> LoadRulesetQuery()

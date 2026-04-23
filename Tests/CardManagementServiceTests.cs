@@ -360,4 +360,62 @@ public sealed class CardManagementServiceTests : IAsyncLifetime
         Assert.Equal(1, result.EffectKind);
         Assert.Equal(5, result.Amount);
     }
+
+    [Fact]
+    public async Task CreateCard_PersistsBattlePresentationAndVisualProfiles()
+    {
+        var request = new CreateCardRequest(
+            "visual_test",
+            "Visual Test",
+            "Card with visuals",
+            2,
+            3,
+            4,
+            1,
+            0,
+            2,
+            1,
+            1,
+            2,
+            0,
+            1,
+            false,
+            new UpsertBattlePresentationRequest(
+                AttackMotionLevel: 4,
+                AttackShakeLevel: 5,
+                AttackDeliveryType: "projectile",
+                ImpactFxId: "impact-heavy",
+                AttackAudioCueId: "audio-heavy"),
+            new[]
+            {
+                new UpsertCardVisualProfileRequest(
+                    "default-hand",
+                    "Default Hand",
+                    true,
+                    new[]
+                    {
+                        new UpsertCardVisualLayerRequest("hand", "frame", "sprite", "frames/rare-hand", 0),
+                        new UpsertCardVisualLayerRequest("hand", "art", "image", "art/visual-test", 1)
+                    }),
+                new UpsertCardVisualProfileRequest(
+                    "played-default",
+                    "Played Default",
+                    false,
+                    new[]
+                    {
+                        new UpsertCardVisualLayerRequest("played", "frame", "sprite", "frames/rare-played", 0),
+                        new UpsertCardVisualLayerRequest("played", "art", "image", "art/visual-test-full", 1, "{\"variant\":\"full-art\"}")
+                    })
+            });
+
+        var result = await _service.CreateCardAsync(request);
+
+        Assert.NotNull(result.BattlePresentation);
+        Assert.Equal(4, result.BattlePresentation!.AttackMotionLevel);
+        Assert.Equal(5, result.BattlePresentation.AttackShakeLevel);
+        Assert.Equal("projectile", result.BattlePresentation.AttackDeliveryType);
+        Assert.Equal(2, result.VisualProfiles.Count);
+        Assert.Contains(result.VisualProfiles, profile => profile.ProfileKey == "default-hand" && profile.IsDefault);
+        Assert.Contains(result.VisualProfiles.SelectMany(profile => profile.Layers), layer => layer.Surface == "played" && layer.Layer == "art");
+    }
 }

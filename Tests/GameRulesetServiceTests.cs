@@ -76,4 +76,51 @@ public class GameRulesetServiceTests
         var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => service.CreateAsync(request));
         Assert.Contains("MaxHeroHealth lower than StartingHeroHealth", exception.Message);
     }
+
+    [Fact]
+    public async Task ResolveForModeAsync_UsesServerSideModeAssignment()
+    {
+        await using var dbContext = CreateDbContext();
+        var ruleset = new GameRuleset
+        {
+            Id = "rules-ranked",
+            RulesetKey = "ranked",
+            DisplayName = "Ranked Rules",
+            IsActive = true,
+            IsDefault = false
+        };
+        dbContext.GameRulesets.Add(ruleset);
+        dbContext.MatchmakingModeRulesetAssignments.Add(new MatchmakingModeRulesetAssignment
+        {
+            Mode = QueueMode.Ranked,
+            RulesetId = ruleset.Id
+        });
+        await dbContext.SaveChangesAsync();
+
+        var service = new GameRulesetService(dbContext);
+        var resolved = await service.ResolveForModeAsync(QueueMode.Ranked);
+
+        Assert.Equal("rules-ranked", resolved.RulesetId);
+        Assert.Equal("Ranked Rules", resolved.DisplayName);
+    }
+
+    [Fact]
+    public async Task AssignModeAsync_RejectsInactiveRulesets()
+    {
+        await using var dbContext = CreateDbContext();
+        dbContext.GameRulesets.Add(new GameRuleset
+        {
+            Id = "rules-inactive",
+            RulesetKey = "inactive",
+            DisplayName = "Inactive Rules",
+            IsActive = false,
+            IsDefault = false
+        });
+        await dbContext.SaveChangesAsync();
+
+        var service = new GameRulesetService(dbContext);
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => service.AssignModeAsync(QueueMode.Casual, "rules-inactive"));
+
+        Assert.Contains("inactive ruleset", exception.Message, StringComparison.OrdinalIgnoreCase);
+    }
 }

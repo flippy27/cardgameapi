@@ -16,6 +16,12 @@ public sealed class GameRulesetsController(IGameRulesetService gameRulesetServic
         return Ok(await gameRulesetService.ListAsync(cancellationToken));
     }
 
+    [HttpGet("matchmaking-modes")]
+    public async Task<ActionResult<IReadOnlyList<MatchmakingModeRulesetDto>>> ListMatchmakingModes(CancellationToken cancellationToken)
+    {
+        return Ok(await gameRulesetService.ListModeAssignmentsAsync(cancellationToken));
+    }
+
     [HttpGet("default")]
     public async Task<ActionResult<GameRulesDto>> GetDefault(CancellationToken cancellationToken)
     {
@@ -62,5 +68,22 @@ public sealed class GameRulesetsController(IGameRulesetService gameRulesetServic
     {
         var activated = await gameRulesetService.ActivateAsync(rulesetId, cancellationToken);
         return activated == null ? NotFound() : Ok(activated);
+    }
+
+    [HttpPut("matchmaking-modes/{mode}")]
+    public async Task<ActionResult<MatchmakingModeRulesetDto>> AssignMatchmakingMode(
+        QueueMode mode,
+        [FromBody] AssignMatchmakingModeRulesetRequest request,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var assignment = await gameRulesetService.AssignModeAsync(mode, request.RulesetId, cancellationToken);
+            return assignment == null ? NotFound() : Ok(assignment);
+        }
+        catch (InvalidOperationException exception)
+        {
+            return BadRequest(new { message = exception.Message });
+        }
     }
 }

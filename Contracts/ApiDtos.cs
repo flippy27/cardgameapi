@@ -51,6 +51,18 @@ public sealed record GameRulesetSummaryDto(
     DateTimeOffset CreatedAt,
     DateTimeOffset? UpdatedAt);
 
+public sealed record MatchmakingModeRulesetDto(
+    QueueMode Mode,
+    string RulesetId,
+    string RulesetKey,
+    string DisplayName,
+    bool RulesetIsActive,
+    DateTimeOffset CreatedAt,
+    DateTimeOffset? UpdatedAt);
+
+public sealed record AssignMatchmakingModeRulesetRequest(
+    [Required] string RulesetId);
+
 public sealed record UpsertGameRulesSeatOverrideRequest(
     [Range(0, 1)] int SeatIndex,
     int AdditionalHeroHealth = 0,
@@ -80,8 +92,7 @@ public sealed record UpsertGameRulesetRequest(
 public sealed record CreatePrivateMatchRequest(
     [Required] string PlayerId,
     [Required] string DeckId,
-    string? MatchName,
-    string? RulesetId = null);
+    string? MatchName);
 
 public sealed record JoinPrivateMatchRequest(
     [Required] string PlayerId,
@@ -92,8 +103,7 @@ public sealed record QueueForMatchRequest(
     [Required] string PlayerId,
     [Required] string DeckId,
     QueueMode Mode,
-    int Rating = 1000,
-    string? RulesetId = null);
+    int Rating = 1000);
 
 public sealed record MatchReservationDto(
     string MatchId,
@@ -105,6 +115,10 @@ public sealed record MatchReservationDto(
     string Status,
     string RulesetId,
     GameRulesDto Rules);
+
+public sealed record GameActionErrorDto(
+    string Code,
+    string Message);
 
 public sealed record ConnectMatchRequest(
     [Required] string PlayerId,

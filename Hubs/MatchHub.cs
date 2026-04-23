@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using CardDuel.ServerApi.Services;
@@ -8,7 +9,7 @@ using CardDuel.ServerApi.Game;
 namespace CardDuel.ServerApi.Hubs;
 
 [Authorize]
-public sealed class MatchHub(IMatchService matchService) : Hub
+public sealed class MatchHub(IMatchService matchService, ILogger<MatchHub> logger) : Hub
 {
     public async Task<MatchSnapshot> ConnectToMatch(ConnectMatchRequest request)
     {
@@ -19,6 +20,14 @@ public sealed class MatchHub(IMatchService matchService) : Hub
         }
 
         var snapshot = matchService.Connect(request.MatchId, request.PlayerId, request.ReconnectToken, Context.ConnectionId);
+        logger.LogInformation(
+            "Player {PlayerId} connected to match {MatchId} on connection {ConnectionId} with local seat {LocalSeatIndex}, active seat {ActiveSeatIndex}, local turn {IsLocalPlayersTurn}",
+            request.PlayerId,
+            request.MatchId,
+            Context.ConnectionId,
+            snapshot.LocalSeatIndex,
+            snapshot.ActiveSeatIndex,
+            snapshot.IsLocalPlayersTurn);
         await Groups.AddToGroupAsync(Context.ConnectionId, request.MatchId);
         await BroadcastMatch(request.MatchId);
         return snapshot;
@@ -27,7 +36,7 @@ public sealed class MatchHub(IMatchService matchService) : Hub
     public async Task<MatchSnapshot> SetReady(SetReadyRequest request)
     {
         EnsurePlayer(request.PlayerId);
-        var snapshot = matchService.SetReady(request.MatchId, request.PlayerId, request.IsReady);
+        var snapshot = ExecuteMatchAction(() => matchService.SetReady(request.MatchId, request.PlayerId, request.IsReady));
         await BroadcastMatch(request.MatchId);
         return snapshot;
     }
@@ -35,7 +44,7 @@ public sealed class MatchHub(IMatchService matchService) : Hub
     public async Task<MatchSnapshot> PlayCard(PlayCardRequest request)
     {
         EnsurePlayer(request.PlayerId);
-        var snapshot = matchService.PlayCard(request.MatchId, request.PlayerId, request.RuntimeHandKey, request.SlotIndex);
+        var snapshot = ExecuteMatchAction(() => matchService.PlayCard(request.MatchId, request.PlayerId, request.RuntimeHandKey, request.SlotIndex));
         await BroadcastMatch(request.MatchId);
         return snapshot;
     }
@@ -43,7 +52,7 @@ public sealed class MatchHub(IMatchService matchService) : Hub
     public async Task<MatchSnapshot> EndTurn(EndTurnRequest request)
     {
         EnsurePlayer(request.PlayerId);
-        var snapshot = matchService.EndTurn(request.MatchId, request.PlayerId);
+        var snapshot = ExecuteMatchAction(() => matchService.EndTurn(request.MatchId, request.PlayerId));
         await BroadcastMatch(request.MatchId);
         return snapshot;
     }
@@ -51,7 +60,7 @@ public sealed class MatchHub(IMatchService matchService) : Hub
     public async Task<MatchSnapshot> Forfeit(ForfeitRequest request)
     {
         EnsurePlayer(request.PlayerId);
-        var snapshot = matchService.Forfeit(request.MatchId, request.PlayerId);
+        var snapshot = ExecuteMatchAction(() => matchService.Forfeit(request.MatchId, request.PlayerId));
         await BroadcastMatch(request.MatchId);
         return snapshot;
     }
@@ -88,6 +97,14 @@ public sealed class MatchHub(IMatchService matchService) : Hub
         var dispatches = matchService.BuildDispatches(matchId);
         foreach (var dispatch in dispatches)
         {
+            logger.LogInformation(
+                "Broadcasting match {MatchId} snapshot to connection {ConnectionId}: local seat {LocalSeatIndex}, active seat {ActiveSeatIndex}, local turn {IsLocalPlayersTurn}, spectator {Spectator}",
+                matchId,
+                dispatch.ConnectionId,
+                dispatch.Snapshot.LocalSeatIndex,
+                dispatch.Snapshot.ActiveSeatIndex,
+                dispatch.Snapshot.IsLocalPlayersTurn,
+                dispatch.Spectator);
             await Clients.Client(dispatch.ConnectionId).SendAsync("MatchSnapshot", dispatch.Snapshot);
         }
     }
@@ -103,6 +120,18 @@ public sealed class MatchHub(IMatchService matchService) : Hub
         if (!string.Equals(ResolvePlayerId(), playerId, StringComparison.Ordinal))
         {
             throw new HubException("Authenticated player does not match payload.");
+        }
+    }
+
+    private static MatchSnapshot ExecuteMatchAction(Func<MatchSnapshot> action)
+    {
+        try
+        {
+            return action();
+        }
+        catch (GameActionException exception)
+        {
+            throw new HubException(JsonSerializer.Serialize(new GameActionErrorDto(exception.Code, exception.Message)));
         }
     }
 }

@@ -30,6 +30,7 @@ Se agregaron nuevas entidades/tablas:
 
 - `game_rulesets`
 - `game_ruleset_seat_overrides`
+- `matchmaking_mode_ruleset_assignments`
 
 Se extendio `matches` con:
 
@@ -60,6 +61,11 @@ Se agrego `GameRulesetsController` con Swagger:
 
 Estas endpoints permiten listar, consultar, crear, editar y activar rulesets.
 
+Tambien se agregaron endpoints para administrar que ruleset usa cada modo de matchmaking:
+
+- `GET /api/v1/game-rulesets/matchmaking-modes`
+- `PUT /api/v1/game-rulesets/matchmaking-modes/{mode}`
+
 ### 4. Reglas entregadas por match
 
 Ahora las reglas no solo existen en DB. Tambien viajan al juego:
@@ -67,7 +73,9 @@ Ahora las reglas no solo existen en DB. Tambien viajan al juego:
 - `POST /api/v1/matchmaking/queue`
 - `POST /api/v1/matchmaking/private`
 
-Aceptan `rulesetId` opcional.
+Ya no aceptan `rulesetId`.
+
+La ruleset ahora la decide el servidor segun el `mode` del matchmaking, usando la asignacion persistida en `matchmaking_mode_ruleset_assignments`.
 
 Las respuestas de reserva (`MatchReservationDto`) ahora incluyen:
 
@@ -87,9 +95,17 @@ Tambien se agrego una endpoint explicita:
 
 Esta lee las reglas persistidas del match desde DB, no desde estado volatile en memoria. Sirve para reconnect, debugging y consumo explicito desde Unity.
 
-### 5. Matchmaking separado por ruleset
+### 5. Matchmaking resuelto por modo del servidor
 
-La cola casual/ranked ya no mezcla jugadores de rulesets distintas.
+Cada modo de matchmaking tiene una ruleset asignada del lado servidor.
+
+Ejemplo:
+
+- `Casual -> Default Rules`
+- `Ranked -> Ranked Rules`
+- `Private -> Default Rules`
+
+La cola casual/ranked ya no mezcla jugadores de rulesets distintas, y tampoco depende de que el cliente mande un `rulesetId`.
 
 Dos players solo matchean juntos si:
 
@@ -152,7 +168,7 @@ El servidor ahora valida de forma explicita:
 - `MaxMana >= StartingMana`;
 - no puede haber overrides duplicados por asiento;
 - el resultado efectivo por asiento no puede dejar valores invalidos;
-- una ruleset solicitada para matchmaking debe existir y estar activa.
+- la ruleset asignada a un modo de matchmaking debe existir y estar activa.
 
 ## Contratos relevantes para Unity
 
@@ -165,7 +181,8 @@ Requests:
 
 Cambios:
 
-- `rulesetId` opcional
+- ya no se envia `rulesetId` desde Unity;
+- el servidor decide la ruleset segun el modo.
 
 Responses:
 
@@ -194,10 +211,11 @@ Responses:
 
 1. Login.
 2. Guardar el `playerId` real que devuelve auth.
-3. Antes de queue/private, decidir si enviar `rulesetId`.
-4. Al crear o entrar a match, consumir `MatchReservationDto.rules`.
-5. Al conectar o reconectar, usar `MatchSnapshot.rules`.
-6. Si hace falta recargar reglas de un match ya persistido, usar `GET /api/v1/matches/{matchId}/rules/{playerId}`.
+3. Antes de queue/private, solo elegir el `mode`.
+4. El servidor resuelve la ruleset asociada a ese modo.
+5. Al crear o entrar a match, consumir `MatchReservationDto.rules`.
+6. Al conectar o reconectar, usar `MatchSnapshot.rules`.
+7. Si hace falta recargar reglas de un match ya persistido, usar `GET /api/v1/matches/{matchId}/rules/{playerId}`.
 
 ### Cosas que Unity ya no deberia hardcodear
 
@@ -250,7 +268,9 @@ Esas reglas de tablero y combate son la siguiente fase natural para mover mas au
 ## Decisiones de diseño tomadas
 
 - una ruleset puede evolucionar en el tiempo, pero cada match guarda snapshot propio;
-- el matchmaking separa por ruleset para evitar emparejamientos incoherentes;
+- el matchmaking resuelve la ruleset solo en servidor, en funcion del modo;
+- la asignacion `mode -> ruleset` es persistente y administrable por API;
+- el matchmaking separa por ruleset efectiva para evitar emparejamientos incoherentes;
 - la lectura de reglas por match se hace desde persistencia para soportar reconnect e historial;
 - los handicaps se modelan por asiento y de forma aditiva;
 - la integracion se dejo modular para poder sumar futuras categorias sin romper contratos existentes.
@@ -267,11 +287,13 @@ Esas reglas de tablero y combate son la siguiente fase natural para mover mas au
 - `Infrastructure/AppDbContext.cs`
 - `Infrastructure/Models/GameRuleset.cs`
 - `Infrastructure/Models/GameRulesetSeatOverride.cs`
+- `Infrastructure/Models/MatchmakingModeRulesetAssignment.cs`
 - `Infrastructure/Models/MatchRecord.cs`
 - `Infrastructure/GameRulesetSeeder.cs`
 - `Services/GameRulesetService.cs`
 - `Services/InMemoryServices.cs`
 - `Migrations/20260421033000_AddGameRulesets.cs`
+- `Migrations/20260421041000_AddMatchmakingModeRulesetAssignments.cs`
 
 ## Dudas abiertas para siguiente fase
 

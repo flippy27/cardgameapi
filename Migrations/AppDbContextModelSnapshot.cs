@@ -174,6 +174,11 @@ namespace CardDuel.ServerApi.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("armor");
 
+                    b.Property<string>("BattlePresentationJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("battle_presentation_json");
+
                     b.Property<int>("Attack")
                         .HasColumnType("integer")
                         .HasColumnName("attack");
@@ -235,6 +240,11 @@ namespace CardDuel.ServerApi.Migrations
                     b.Property<int?>("UnitType")
                         .HasColumnType("integer")
                         .HasColumnName("unit_type");
+
+                    b.Property<string>("VisualProfilesJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("visual_profiles_json");
 
                     b.Property<DateTimeOffset?>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
@@ -458,6 +468,39 @@ namespace CardDuel.ServerApi.Migrations
                         .IsUnique();
 
                     b.ToTable("match_actions", (string)null);
+                });
+
+            modelBuilder.Entity("CardDuel.ServerApi.Infrastructure.Models.MatchmakingModeRulesetAssignment", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("text")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<int>("Mode")
+                        .HasColumnType("integer")
+                        .HasColumnName("mode");
+
+                    b.Property<string>("RulesetId")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("ruleset_id");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Mode")
+                        .IsUnique();
+
+                    b.HasIndex("RulesetId");
+
+                    b.ToTable("matchmaking_mode_ruleset_assignments", (string)null);
                 });
 
             modelBuilder.Entity("CardDuel.ServerApi.Infrastructure.Models.MatchRecord", b =>
@@ -792,6 +835,17 @@ namespace CardDuel.ServerApi.Migrations
                     b.Navigation("GameRuleset");
                 });
 
+            modelBuilder.Entity("CardDuel.ServerApi.Infrastructure.Models.MatchmakingModeRulesetAssignment", b =>
+                {
+                    b.HasOne("CardDuel.ServerApi.Infrastructure.Models.GameRuleset", "Ruleset")
+                        .WithMany("MatchmakingModeAssignments")
+                        .HasForeignKey("RulesetId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Ruleset");
+                });
+
             modelBuilder.Entity("CardDuel.ServerApi.Infrastructure.Models.PlayerRating", b =>
                 {
                     b.HasOne("CardDuel.ServerApi.Infrastructure.Models.UserAccount", "User")
@@ -817,6 +871,8 @@ namespace CardDuel.ServerApi.Migrations
 
             modelBuilder.Entity("CardDuel.ServerApi.Infrastructure.Models.GameRuleset", b =>
                 {
+                    b.Navigation("MatchmakingModeAssignments");
+
                     b.Navigation("SeatOverrides");
                 });
 

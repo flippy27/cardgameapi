@@ -10,6 +10,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<MatchRecord> Matches { get; set; } = null!;
     public DbSet<GameRuleset> GameRulesets { get; set; } = null!;
     public DbSet<GameRulesetSeatOverride> GameRulesetSeatOverrides { get; set; } = null!;
+    public DbSet<MatchmakingModeRulesetAssignment> MatchmakingModeRulesetAssignments { get; set; } = null!;
     public DbSet<PlayerRating> Ratings { get; set; } = null!;
     public DbSet<ReplayLog> ReplayLogs { get; set; } = null!;
     public DbSet<CardDefinition> Cards { get; set; } = null!;
@@ -118,6 +119,10 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
                 .WithOne(x => x.GameRuleset)
                 .HasForeignKey(x => x.GameRulesetId)
                 .OnDelete(DeleteBehavior.Cascade);
+            e.HasMany(x => x.MatchmakingModeAssignments)
+                .WithOne(x => x.Ruleset)
+                .HasForeignKey(x => x.RulesetId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<GameRulesetSeatOverride>(e =>
@@ -134,6 +139,19 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             e.Property(x => x.AdditionalManaPerTurn).HasColumnName("additional_mana_per_turn");
             e.Property(x => x.AdditionalCardsDrawnOnTurnStart).HasColumnName("additional_cards_drawn_on_turn_start");
             e.HasIndex(x => new { x.GameRulesetId, x.SeatIndex }).IsUnique();
+        });
+
+        modelBuilder.Entity<MatchmakingModeRulesetAssignment>(e =>
+        {
+            e.ToTable("matchmaking_mode_ruleset_assignments");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id");
+            e.Property(x => x.Mode).HasColumnName("mode");
+            e.Property(x => x.RulesetId).HasColumnName("ruleset_id");
+            e.Property(x => x.CreatedAt).HasColumnName("created_at");
+            e.Property(x => x.UpdatedAt).HasColumnName("updated_at");
+            e.HasIndex(x => x.Mode).IsUnique();
+            e.HasIndex(x => x.RulesetId);
         });
 
         modelBuilder.Entity<PlayerRating>(e =>
@@ -171,6 +189,8 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             e.Property(x => x.DefaultAttackSelector).HasColumnName("default_attack_selector");
             e.Property(x => x.TurnsUntilCanAttack).HasColumnName("turns_until_can_attack");
             e.Property(x => x.IsLimited).HasColumnName("is_limited");
+            e.Property(x => x.BattlePresentationJson).HasColumnName("battle_presentation_json").HasColumnType("jsonb");
+            e.Property(x => x.VisualProfilesJson).HasColumnName("visual_profiles_json").HasColumnType("jsonb");
             e.Property(x => x.CreatedAt).HasColumnName("created_at");
             e.Property(x => x.UpdatedAt).HasColumnName("updated_at");
             e.HasIndex(x => x.CardId).IsUnique();

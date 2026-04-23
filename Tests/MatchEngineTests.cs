@@ -119,7 +119,8 @@ public class MatchEngineTests
         engine.SetReady("player1", true);
         engine.SetReady("player2", true);
 
-        var exception = Assert.Throws<InvalidOperationException>(() => engine.EndTurn("player2"));
+        var exception = Assert.Throws<GameActionException>(() => engine.EndTurn("player2"));
+        Assert.Equal("not_your_turn", exception.Code);
         Assert.Contains("player1", exception.Message);
     }
 
@@ -186,5 +187,81 @@ public class MatchEngineTests
         Assert.Equal(1, engine.Seats[1].Mana);
         Assert.Equal(1, engine.Seats[1].MaxMana);
         Assert.Equal(1, engine.ActiveSeatIndex);
+    }
+
+    [Fact]
+    public void PlayCard_OnOccupiedFront_ShiftsExistingCardsForwardInPriorityOrder()
+    {
+        var engine = new MatchEngine("match1", "ABC123", QueueMode.Casual, TimeSpan.FromSeconds(20), CreateRules());
+        var cards = new[]
+        {
+            CreateCard("card1", "Card 1", mana: 1),
+            CreateCard("card2", "Card 2", mana: 1),
+            CreateCard("card3", "Card 3", mana: 1)
+        };
+
+        engine.ReserveSeat("player1", "deck1", cards);
+        engine.ReserveSeat("player2", "deck2", cards);
+        engine.SetReady("player1", true);
+        engine.SetReady("player2", true);
+
+        var first = engine.Seats[0].Hand.Single(card => card.Definition.CardId == "card1");
+        engine.PlayCard("player1", first.RuntimeHandKey, BoardSlot.Front);
+        engine.EndTurn("player1");
+        engine.EndTurn("player2");
+
+        var second = engine.Seats[0].Hand.Single(card => card.Definition.CardId == "card2");
+        engine.PlayCard("player1", second.RuntimeHandKey, BoardSlot.Front);
+
+        Assert.Equal("card2", engine.Seats[0].Board[BoardSlot.Front]!.Definition.CardId);
+        Assert.Equal("card1", engine.Seats[0].Board[BoardSlot.BackLeft]!.Definition.CardId);
+    }
+
+    [Fact]
+    public void PlayCard_OnOccupiedBackLeft_ShiftsExistingLeftCardToRight()
+    {
+        var engine = new MatchEngine("match1", "ABC123", QueueMode.Casual, TimeSpan.FromSeconds(20), CreateRules());
+        var cards = new[]
+        {
+            CreateCard("card1", "Card 1", mana: 1),
+            CreateCard("card2", "Card 2", mana: 1),
+            CreateCard("card3", "Card 3", mana: 1)
+        };
+
+        engine.ReserveSeat("player1", "deck1", cards);
+        engine.ReserveSeat("player2", "deck2", cards);
+        engine.SetReady("player1", true);
+        engine.SetReady("player2", true);
+
+        engine.PlayCard("player1", engine.Seats[0].Hand.Single(card => card.Definition.CardId == "card1").RuntimeHandKey, BoardSlot.Front);
+        engine.EndTurn("player1");
+        engine.EndTurn("player2");
+
+        engine.PlayCard("player1", engine.Seats[0].Hand.Single(card => card.Definition.CardId == "card2").RuntimeHandKey, BoardSlot.BackLeft);
+        engine.EndTurn("player1");
+        engine.EndTurn("player2");
+
+        engine.PlayCard("player1", engine.Seats[0].Hand.Single(card => card.Definition.CardId == "card3").RuntimeHandKey, BoardSlot.BackLeft);
+
+        Assert.Equal("card1", engine.Seats[0].Board[BoardSlot.Front]!.Definition.CardId);
+        Assert.Equal("card3", engine.Seats[0].Board[BoardSlot.BackLeft]!.Definition.CardId);
+        Assert.Equal("card2", engine.Seats[0].Board[BoardSlot.BackRight]!.Definition.CardId);
+    }
+
+    [Fact]
+    public void PlayCard_WhenManaIsInsufficient_ThrowsParseableGameActionException()
+    {
+        var engine = new MatchEngine("match1", "ABC123", QueueMode.Casual, TimeSpan.FromSeconds(20), CreateRules());
+        var cards = new[] { CreateCard("card1", "Card 1", mana: 2) };
+
+        engine.ReserveSeat("player1", "deck1", cards);
+        engine.ReserveSeat("player2", "deck2", cards);
+        engine.SetReady("player1", true);
+        engine.SetReady("player2", true);
+
+        var card = engine.Seats[0].Hand[0];
+        var exception = Assert.Throws<GameActionException>(() => engine.PlayCard("player1", card.RuntimeHandKey, BoardSlot.Front));
+
+        Assert.Equal("not_enough_mana", exception.Code);
     }
 }

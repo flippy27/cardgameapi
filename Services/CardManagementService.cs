@@ -2,6 +2,7 @@ using CardDuel.ServerApi.Contracts;
 using CardDuel.ServerApi.Infrastructure;
 using CardDuel.ServerApi.Infrastructure.Models;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 
 namespace CardDuel.ServerApi.Services;
 
@@ -43,7 +44,9 @@ public sealed class CardManagementService(AppDbContext db) : ICardManagementServ
             AllowedRow = request.AllowedRow,
             DefaultAttackSelector = request.DefaultAttackSelector,
             TurnsUntilCanAttack = request.TurnsUntilCanAttack,
-            IsLimited = request.IsLimited
+            IsLimited = request.IsLimited,
+            BattlePresentationJson = SerializeBattlePresentation(request.BattlePresentation),
+            VisualProfilesJson = SerializeVisualProfiles(request.VisualProfiles)
         };
 
         db.Cards.Add(card);
@@ -72,6 +75,8 @@ public sealed class CardManagementService(AppDbContext db) : ICardManagementServ
         if (request.DefaultAttackSelector.HasValue) card.DefaultAttackSelector = request.DefaultAttackSelector.Value;
         if (request.TurnsUntilCanAttack.HasValue) card.TurnsUntilCanAttack = request.TurnsUntilCanAttack.Value;
         if (request.IsLimited.HasValue) card.IsLimited = request.IsLimited.Value;
+        if (request.BattlePresentation != null) card.BattlePresentationJson = SerializeBattlePresentation(request.BattlePresentation);
+        if (request.VisualProfiles != null) card.VisualProfilesJson = SerializeVisualProfiles(request.VisualProfiles);
 
         card.UpdatedAt = DateTimeOffset.UtcNow;
 
@@ -238,6 +243,8 @@ public sealed class CardManagementService(AppDbContext db) : ICardManagementServ
         new(card.Id, card.CardId, card.DisplayName, card.Description, card.ManaCost, card.Attack, card.Health,
             card.Armor, card.CardType, card.CardRarity, card.CardFaction, card.UnitType, card.AllowedRow,
             card.DefaultAttackSelector, card.TurnsUntilCanAttack, card.IsLimited,
+            DeserializeBattlePresentation(card.BattlePresentationJson),
+            DeserializeVisualProfiles(card.VisualProfilesJson),
             card.CardAbilities.OrderBy(ca => ca.Sequence).Select(ca => MapToDto(ca.AbilityDefinition)).ToList());
 
     private static AbilityDto MapToDto(AbilityDefinition ability) =>
@@ -246,4 +253,63 @@ public sealed class CardManagementService(AppDbContext db) : ICardManagementServ
 
     private static EffectDto MapToDto(EffectDefinition effect) =>
         new(effect.Id, effect.EffectKind, effect.Amount, effect.Sequence);
+
+    private static string SerializeBattlePresentation(UpsertBattlePresentationRequest? request)
+    {
+        if (request == null)
+        {
+            return "{}";
+        }
+
+        return JsonSerializer.Serialize(new BattlePresentationDto(
+            request.AttackMotionLevel,
+            request.AttackShakeLevel,
+            request.AttackDeliveryType,
+            request.ImpactFxId,
+            request.AttackAudioCueId,
+            request.MetadataJson));
+    }
+
+    private static string SerializeVisualProfiles(IReadOnlyList<UpsertCardVisualProfileRequest>? request)
+    {
+        if (request == null)
+        {
+            return "[]";
+        }
+
+        var profiles = request.Select(profile => new CardVisualProfileDto(
+            profile.ProfileKey,
+            profile.DisplayName,
+            profile.IsDefault,
+            profile.Layers.Select(layer => new CardVisualLayerDto(
+                layer.Surface,
+                layer.Layer,
+                layer.SourceKind,
+                layer.AssetRef,
+                layer.SortOrder,
+                layer.MetadataJson)).ToArray())).ToArray();
+
+        return JsonSerializer.Serialize(profiles);
+    }
+
+    private static BattlePresentationDto? DeserializeBattlePresentation(string json)
+    {
+        if (string.IsNullOrWhiteSpace(json) || json == "{}")
+        {
+            return null;
+        }
+
+        return JsonSerializer.Deserialize<BattlePresentationDto>(json);
+    }
+
+    private static IReadOnlyList<CardVisualProfileDto> DeserializeVisualProfiles(string json)
+    {
+        if (string.IsNullOrWhiteSpace(json) || json == "[]")
+        {
+            return Array.Empty<CardVisualProfileDto>();
+        }
+
+        var profiles = JsonSerializer.Deserialize<List<CardVisualProfileDto>>(json);
+        return profiles ?? new List<CardVisualProfileDto>();
+    }
 }

@@ -21,7 +21,7 @@ public sealed class MatchmakingController(
 
         try
         {
-            var resolvedRules = await gameRulesetService.ResolveAsync(request.RulesetId, cancellationToken);
+            var resolvedRules = await gameRulesetService.ResolveForModeAsync(QueueMode.Private, cancellationToken);
             return Ok(matchService.CreatePrivate(request.PlayerId, request.DeckId, request.MatchName, resolvedRules));
         }
         catch (InvalidOperationException exception)
@@ -50,7 +50,7 @@ public sealed class MatchmakingController(
 
         try
         {
-            var resolvedRules = await gameRulesetService.ResolveAsync(request.RulesetId, cancellationToken);
+            var resolvedRules = await gameRulesetService.ResolveForModeAsync(request.Mode, cancellationToken);
             return Ok(matchService.Queue(request.PlayerId, request.DeckId, request.Mode, request.Rating, resolvedRules));
         }
         catch (InvalidOperationException exception)

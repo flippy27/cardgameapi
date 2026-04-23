@@ -126,6 +126,20 @@ public sealed record ServerAbilityDefinition(
     TargetSelectorKind Selector,
     IReadOnlyList<ServerEffectDefinition> Effects);
 
+public sealed record ServerCardVisualLayer(
+    string Surface,
+    string Layer,
+    string SourceKind,
+    string AssetRef,
+    int SortOrder,
+    string? MetadataJson);
+
+public sealed record ServerCardVisualProfile(
+    string ProfileKey,
+    string DisplayName,
+    bool IsDefault,
+    IReadOnlyList<ServerCardVisualLayer> Layers);
+
 public sealed record ServerCardDefinition(
     string CardId,
     string DisplayName,
@@ -141,7 +155,11 @@ public sealed record ServerCardDefinition(
     AllowedRow AllowedRow,
     TargetSelectorKind DefaultAttackSelector,
     int TurnsUntilCanAttack,
-    IReadOnlyList<ServerAbilityDefinition> Abilities);
+    IReadOnlyList<ServerAbilityDefinition> Abilities,
+    int AttackMotionLevel = 0,
+    int AttackShakeLevel = 0,
+    string? AttackDeliveryType = null,
+    IReadOnlyList<ServerCardVisualProfile>? VisualProfiles = null);
 
 public sealed record RuntimeHandCard(string RuntimeHandKey, ServerCardDefinition Definition);
 
@@ -200,12 +218,16 @@ public sealed record BoardCardSnapshot(
     int CurrentHealth,
     int MaxHealth,
     int Armor,
+    int AttackMotionLevel,
+    int AttackShakeLevel,
+    string? AttackDeliveryType,
     BoardSlot Slot);
 
 public sealed record BoardSlotSnapshot(BoardSlot Slot, bool Occupied, BoardCardSnapshot? Occupant);
 
 public sealed record SeatSnapshot(
     int SeatIndex,
+    string PlayerId,
     bool Connected,
     bool Ready,
     int HeroHealth,
@@ -392,9 +414,10 @@ public sealed class MatchEngine
 
         var seat = GetSeat(playerId);
         var card = seat.Hand.FirstOrDefault(x => x.RuntimeHandKey == runtimeHandKey)
-            ?? throw new InvalidOperationException("Card not found in hand.");
+            ?? throw GameActionException.CardNotFoundInHand();
 
         EnsureLegalPlacement(seat, card.Definition, slot);
+        ShiftBoardForPlacement(seat, slot);
 
         seat.Mana -= card.Definition.ManaCost;
         seat.Hand.Remove(card);
@@ -466,6 +489,7 @@ public sealed class MatchEngine
             var includeHand = !redactHandsForSpectator && seat.SeatIndex == localSeatIndex;
             seats.Add(new SeatSnapshot(
                 seat.SeatIndex,
+                seat.PlayerId,
                 seat.Connected,
                 seat.Ready,
                 seat.HeroHealth,
@@ -497,6 +521,9 @@ public sealed class MatchEngine
                             pair.Value.CurrentHealth,
                             pair.Value.MaxHealth,
                             pair.Value.Armor,
+                            pair.Value.Definition.AttackMotionLevel,
+                            pair.Value.Definition.AttackShakeLevel,
+                            pair.Value.Definition.AttackDeliveryType,
                             pair.Value.Slot))).ToArray()));
         }
 
@@ -613,38 +640,95 @@ public sealed class MatchEngine
     {
         if (Phase != MatchPhase.InProgress || DuelEnded)
         {
-            throw new InvalidOperationException("Match is not currently playable.");
+            throw GameActionException.MatchNotPlayable();
         }
 
         var seat = GetSeat(playerId);
         if (seat.SeatIndex != ActiveSeatIndex)
         {
             var activePlayerId = ActiveSeatIndex is 0 or 1 ? _seats[ActiveSeatIndex].PlayerId : "unknown";
-            throw new InvalidOperationException(
-                $"It is not this player's turn. Active player is '{activePlayerId}' in seat {ActiveSeatIndex}.");
+            throw GameActionException.NotYourTurn(activePlayerId, ActiveSeatIndex);
         }
     }
 
     private void EnsureLegalPlacement(RuntimeSeatState seat, ServerCardDefinition card, BoardSlot slot)
     {
-        if (seat.Board[slot] != null)
-        {
-            throw new InvalidOperationException("Slot is occupied.");
-        }
-
         if (card.ManaCost > seat.Mana)
         {
-            throw new InvalidOperationException("Not enough mana.");
+            throw GameActionException.NotEnoughMana();
         }
 
-        if (slot == BoardSlot.Front && card.AllowedRow == AllowedRow.BackOnly)
-        {
-            throw new InvalidOperationException("This card can only be played in the back row.");
-        }
+        // if (slot == BoardSlot.Front && card.AllowedRow == AllowedRow.BackOnly)
+        // {
+        //     throw GameActionException.BackOnlyCardRequired();
+        // }
 
-        if ((slot == BoardSlot.BackLeft || slot == BoardSlot.BackRight) && card.AllowedRow == AllowedRow.FrontOnly)
+        // if ((slot == BoardSlot.BackLeft || slot == BoardSlot.BackRight) && card.AllowedRow == AllowedRow.FrontOnly)
+        // {
+        //     throw GameActionException.FrontOnlyCardRequired();
+        // }
+
+        var front = seat.Board[BoardSlot.Front];
+        var left = seat.Board[BoardSlot.BackLeft];
+        var right = seat.Board[BoardSlot.BackRight];
+
+        switch (slot)
         {
-            throw new InvalidOperationException("This card can only be played in the front row.");
+            case BoardSlot.Front when front != null && left != null && right != null:
+                throw GameActionException.BoardLaneFull(slot);
+            case BoardSlot.BackLeft when front == null:
+                throw GameActionException.FrontSlotRequired();
+            case BoardSlot.BackLeft when left != null && right != null:
+                throw GameActionException.BoardLaneFull(slot);
+            case BoardSlot.BackRight when front == null:
+                throw GameActionException.FrontSlotRequired();
+            case BoardSlot.BackRight when left == null:
+                throw GameActionException.LeftSlotRequired();
+            case BoardSlot.BackRight when right != null:
+                throw GameActionException.BoardLaneFull(slot);
+        }
+    }
+
+    private static void ShiftBoardForPlacement(RuntimeSeatState seat, BoardSlot slot)
+    {
+        switch (slot)
+        {
+            case BoardSlot.Front:
+                if (seat.Board[BoardSlot.Front] == null)
+                {
+                    return;
+                }
+
+                if (seat.Board[BoardSlot.BackLeft] == null)
+                {
+                    MoveCard(seat, BoardSlot.Front, BoardSlot.BackLeft);
+                    return;
+                }
+
+                if (seat.Board[BoardSlot.BackRight] == null)
+                {
+                    MoveCard(seat, BoardSlot.BackLeft, BoardSlot.BackRight);
+                    MoveCard(seat, BoardSlot.Front, BoardSlot.BackLeft);
+                }
+                return;
+
+            case BoardSlot.BackLeft:
+                if (seat.Board[BoardSlot.BackLeft] != null && seat.Board[BoardSlot.BackRight] == null)
+                {
+                    MoveCard(seat, BoardSlot.BackLeft, BoardSlot.BackRight);
+                }
+                return;
+        }
+    }
+
+    private static void MoveCard(RuntimeSeatState seat, BoardSlot from, BoardSlot to)
+    {
+        var occupant = seat.Board[from];
+        seat.Board[from] = null;
+        seat.Board[to] = occupant;
+        if (occupant != null)
+        {
+            occupant.Slot = to;
         }
     }
 
@@ -814,13 +898,28 @@ public sealed class MatchEngine
                     seat.Board[slot] = null;
                 }
             }
+
+            CompactBoard(seat);
+        }
+    }
+
+    private static void CompactBoard(RuntimeSeatState seat)
+    {
+        if (seat.Board[BoardSlot.Front] == null)
+        {
+            MoveCard(seat, BoardSlot.BackLeft, BoardSlot.Front);
+            MoveCard(seat, BoardSlot.BackRight, BoardSlot.BackLeft);
+        }
+        else if (seat.Board[BoardSlot.BackLeft] == null)
+        {
+            MoveCard(seat, BoardSlot.BackRight, BoardSlot.BackLeft);
         }
     }
 
     private RuntimeSeatState GetSeat(string playerId)
     {
         return _seats.FirstOrDefault(x => x.PlayerId == playerId)
-            ?? throw new InvalidOperationException("Player is not part of this match.");
+            ?? throw GameActionException.PlayerNotInMatch();
     }
 
     private bool BothSeatsFilled() => _seats.All(x => !string.IsNullOrWhiteSpace(x.PlayerId));

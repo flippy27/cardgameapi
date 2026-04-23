@@ -22,7 +22,53 @@ public sealed record CardDefinitionDto(
     int DefaultAttackSelector,
     int TurnsUntilCanAttack,
     bool IsLimited,
+    BattlePresentationDto? BattlePresentation,
+    IReadOnlyList<CardVisualProfileDto> VisualProfiles,
     List<AbilityDto> Abilities);
+
+public sealed record BattlePresentationDto(
+    int AttackMotionLevel,
+    int AttackShakeLevel,
+    string? AttackDeliveryType,
+    string? ImpactFxId,
+    string? AttackAudioCueId,
+    string? MetadataJson);
+
+public sealed record CardVisualLayerDto(
+    string Surface,
+    string Layer,
+    string SourceKind,
+    string AssetRef,
+    int SortOrder,
+    string? MetadataJson);
+
+public sealed record CardVisualProfileDto(
+    string ProfileKey,
+    string DisplayName,
+    bool IsDefault,
+    IReadOnlyList<CardVisualLayerDto> Layers);
+
+public sealed record UpsertBattlePresentationRequest(
+    [Range(0, 5)] int AttackMotionLevel = 0,
+    [Range(0, 5)] int AttackShakeLevel = 0,
+    string? AttackDeliveryType = null,
+    string? ImpactFxId = null,
+    string? AttackAudioCueId = null,
+    string? MetadataJson = null);
+
+public sealed record UpsertCardVisualLayerRequest(
+    [Required] string Surface,
+    [Required] string Layer,
+    [Required] string SourceKind,
+    [Required] string AssetRef,
+    int SortOrder = 0,
+    string? MetadataJson = null);
+
+public sealed record UpsertCardVisualProfileRequest(
+    [Required] string ProfileKey,
+    [Required] string DisplayName,
+    bool IsDefault,
+    [Required] IReadOnlyList<UpsertCardVisualLayerRequest> Layers);
 
 public sealed record CreateCardRequest(
     [Required] string CardId,
@@ -39,7 +85,9 @@ public sealed record CreateCardRequest(
     [Range(0, 2)] int AllowedRow,
     [Range(0, 4)] int DefaultAttackSelector,
     [Range(0, 5)] int TurnsUntilCanAttack = 1,
-    bool IsLimited = false);
+    bool IsLimited = false,
+    UpsertBattlePresentationRequest? BattlePresentation = null,
+    IReadOnlyList<UpsertCardVisualProfileRequest>? VisualProfiles = null);
 
 public sealed record UpdateCardRequest(
     string? DisplayName,
@@ -55,7 +103,9 @@ public sealed record UpdateCardRequest(
     int? AllowedRow,
     int? DefaultAttackSelector,
     int? TurnsUntilCanAttack,
-    bool? IsLimited);
+    bool? IsLimited,
+    UpsertBattlePresentationRequest? BattlePresentation = null,
+    IReadOnlyList<UpsertCardVisualProfileRequest>? VisualProfiles = null);
 
 // ===== Ability DTOs =====
 

@@ -114,6 +114,10 @@ public sealed class MatchesController(IMatchService matchService, AppDbContext d
         {
             return Ok(action());
         }
+        catch (GameActionException exception)
+        {
+            return BadRequest(new GameActionErrorDto(exception.Code, exception.Message));
+        }
         catch (InvalidOperationException exception)
         {
             return BadRequest(new { message = exception.Message });

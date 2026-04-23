@@ -106,9 +106,16 @@ builder.Services.AddResponseCompression(options =>
     options.EnableForHttps = true;
 });
 
-builder.Services.AddHealthChecks()
-    .AddNpgSql(dbConnection, name: "postgresql", timeout: TimeSpan.FromSeconds(5))
-    .AddRedis(builder.Configuration["SignalR:RedisConnectionString"] ?? "localhost:6379", name: "redis", timeout: TimeSpan.FromSeconds(5));
+var useRedisBackplane = builder.Configuration.GetValue<bool>("SignalR:UseRedisBackplane");
+var redisConnection = builder.Configuration["SignalR:RedisConnectionString"];
+
+var healthChecks = builder.Services.AddHealthChecks()
+    .AddNpgSql(dbConnection, name: "postgresql", timeout: TimeSpan.FromSeconds(5));
+
+if (useRedisBackplane && !string.IsNullOrWhiteSpace(redisConnection))
+{
+    healthChecks.AddRedis(redisConnection, name: "redis", timeout: TimeSpan.FromSeconds(5));
+}
 
 builder.Services.AddCors(options =>
     options.AddDefaultPolicy(builder =>
@@ -129,9 +136,8 @@ var signalRBuilder = builder.Services.AddSignalR(options =>
     options.MaximumParallelInvocationsPerClient = 10;
 });
 
-if (builder.Configuration.GetValue<bool>("SignalR:UseRedisBackplane"))
+if (useRedisBackplane)
 {
-    var redisConnection = builder.Configuration["SignalR:RedisConnectionString"];
     if (!string.IsNullOrWhiteSpace(redisConnection))
     {
         signalRBuilder.AddStackExchangeRedis(redisConnection);
@@ -209,5 +215,11 @@ logger.LogInformation("📚 Swagger Docs: http://0.0.0.0:5000/swagger");
 logger.LogInformation("🎯 Match Hub: ws://0.0.0.0:5000/hubs/match (SignalR)");
 logger.LogInformation("💚 Health Check: http://0.0.0.0:5000/api/v1/health");
 logger.LogInformation("═══════════════════════════════════════════════════════════");
+
+logger.LogInformation("SignalR Redis Backplane: {RedisBackplaneStatus}", useRedisBackplane ? "ENABLED" : "DISABLED");
+if (useRedisBackplane)
+{
+    logger.LogInformation("SignalR Redis Connection: {RedisConnection}", string.IsNullOrWhiteSpace(redisConnection) ? "<missing>" : redisConnection);
+}
 
 app.Run();
