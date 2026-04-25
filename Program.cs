@@ -175,6 +175,9 @@ builder.Services.AddScoped<IReconnectionService, ReconnectionService>();
 builder.Services.AddScoped<IAuditService, AuditService>();
 builder.Services.AddScoped<IReplayPersistenceService, ReplayPersistenceService>();
 builder.Services.AddScoped<IReplayValidationService, ReplayValidationService>();
+builder.Services.AddScoped<IPlayerCardService, PlayerCardService>();
+builder.Services.AddScoped<IPlayerInventoryService, PlayerInventoryService>();
+builder.Services.AddScoped<ICraftingService, CraftingService>();
 
 var app = builder.Build();
 

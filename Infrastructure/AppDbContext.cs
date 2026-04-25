@@ -28,6 +28,13 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<AuditLog> AuditLogs { get; set; } = null!;
     public DbSet<MatchAction> MatchActions { get; set; } = null!;
 
+    // Player ownership + inventory + crafting
+    public DbSet<ItemTypeDefinition> ItemTypeDefinitions { get; set; } = null!;
+    public DbSet<PlayerCard> PlayerCards { get; set; } = null!;
+    public DbSet<PlayerCardUpgrade> PlayerCardUpgrades { get; set; } = null!;
+    public DbSet<PlayerItem> PlayerItems { get; set; } = null!;
+    public DbSet<CardCraftingRequirement> CraftingRequirements { get; set; } = null!;
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -422,6 +429,91 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             e.Property(x => x.CreatedAt).HasColumnName("created_at");
             e.HasIndex(x => x.MatchId);
             e.HasIndex(x => new { x.MatchId, x.ActionNumber }).IsUnique();
+        });
+
+        // ── Player ownership ──────────────────────────────────────────────────
+
+        modelBuilder.Entity<ItemTypeDefinition>(e =>
+        {
+            e.ToTable("item_type_definitions");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").ValueGeneratedNever();
+            e.Property(x => x.Key).HasColumnName("key").HasMaxLength(64);
+            e.Property(x => x.DisplayName).HasColumnName("display_name").HasMaxLength(128);
+            e.Property(x => x.Description).HasColumnName("description").HasMaxLength(512);
+            e.Property(x => x.Category).HasColumnName("category").HasMaxLength(64);
+            e.Property(x => x.MaxStack).HasColumnName("max_stack").HasDefaultValue(-1);
+            e.Property(x => x.IsActive).HasColumnName("is_active").HasDefaultValue(true);
+            e.Property(x => x.IconAssetRef).HasColumnName("icon_asset_ref").HasMaxLength(255);
+            e.Property(x => x.MetadataJson).HasColumnName("metadata_json").HasColumnType("jsonb");
+            e.HasIndex(x => x.Key).IsUnique();
+            e.HasData(AuthoringDefinitions.ItemTypes);
+        });
+
+        modelBuilder.Entity<PlayerCard>(e =>
+        {
+            e.ToTable("player_cards");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id");
+            e.Property(x => x.UserId).HasColumnName("user_id");
+            e.Property(x => x.CardDefinitionId).HasColumnName("card_definition_id");
+            e.Property(x => x.AcquiredFrom).HasColumnName("acquired_from").HasMaxLength(64);
+            e.Property(x => x.AcquiredAt).HasColumnName("acquired_at");
+            e.HasIndex(x => x.UserId);
+            e.HasIndex(x => new { x.UserId, x.CardDefinitionId });
+            e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.CardDefinition).WithMany().HasForeignKey(x => x.CardDefinitionId).OnDelete(DeleteBehavior.Restrict);
+            e.HasMany(x => x.Upgrades).WithOne(u => u.PlayerCard).HasForeignKey(u => u.PlayerCardId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<PlayerCardUpgrade>(e =>
+        {
+            e.ToTable("player_card_upgrades");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id");
+            e.Property(x => x.PlayerCardId).HasColumnName("player_card_id");
+            e.Property(x => x.UpgradeKind).HasColumnName("upgrade_kind").HasMaxLength(64);
+            e.Property(x => x.IntValue).HasColumnName("int_value");
+            e.Property(x => x.StringValue).HasColumnName("string_value").HasMaxLength(255);
+            e.Property(x => x.AppliedAt).HasColumnName("applied_at");
+            e.Property(x => x.AppliedBy).HasColumnName("applied_by").HasMaxLength(64);
+            e.Property(x => x.Note).HasColumnName("note").HasMaxLength(512);
+            e.HasIndex(x => x.PlayerCardId);
+        });
+
+        modelBuilder.Entity<PlayerItem>(e =>
+        {
+            e.ToTable("player_items");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id");
+            e.Property(x => x.UserId).HasColumnName("user_id");
+            e.Property(x => x.ItemTypeId).HasColumnName("item_type_id");
+            e.Property(x => x.Quantity).HasColumnName("quantity").HasDefaultValue(0L);
+            e.Property(x => x.CreatedAt).HasColumnName("created_at");
+            e.Property(x => x.UpdatedAt).HasColumnName("updated_at");
+            e.HasIndex(x => new { x.UserId, x.ItemTypeId }).IsUnique();
+            e.HasOne(x => x.User).WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.ItemType).WithMany(it => it.PlayerItems).HasForeignKey(x => x.ItemTypeId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<CardCraftingRequirement>(e =>
+        {
+            e.ToTable("card_crafting_requirements");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id");
+            e.Property(x => x.CardDefinitionId).HasColumnName("card_definition_id");
+            e.Property(x => x.ItemTypeId).HasColumnName("item_type_id");
+            e.Property(x => x.QuantityRequired).HasColumnName("quantity_required");
+            e.HasIndex(x => new { x.CardDefinitionId, x.ItemTypeId }).IsUnique();
+            e.HasOne(x => x.CardDefinition).WithMany(c => c.CraftingRequirements).HasForeignKey(x => x.CardDefinitionId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne(x => x.ItemType).WithMany(it => it.CraftingRequirements).HasForeignKey(x => x.ItemTypeId).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        // Add optional player_card_id FK to deck_cards
+        modelBuilder.Entity<DeckCard>(e =>
+        {
+            e.Property(x => x.PlayerCardId).HasColumnName("player_card_id");
+            e.HasOne(x => x.PlayerCard).WithMany().HasForeignKey(x => x.PlayerCardId).OnDelete(DeleteBehavior.SetNull);
         });
 
         modelBuilder.Entity<ReplayLog>(e =>

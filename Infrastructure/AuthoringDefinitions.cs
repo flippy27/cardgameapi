@@ -42,6 +42,20 @@ public static class AuthoringDefinitions
         new() { Id = 3, Key = "enrage_cooldown", DisplayName = "Enrage Cooldown", Description = "Internal debuff/cooldown. Applied after enrage attacks twice; card skips its next attack.", Category = "cooldown", IconAssetRef = "status/enrage_cooldown", VfxCueId = "vfx_status_enrage_cooldown", UiColorHex = "#FF6A3D", MetadataJson = "{\"clientIndicator\":\"enrageCooldown\"}" }
     };
 
+    public static readonly ItemTypeDefinition[] ItemTypes =
+    {
+        new() { Id = 0, Key = "card_dust",        DisplayName = "Card Dust",        Description = "Basic crafting material earned by playing matches. Required for all card crafts.",                          Category = "crafting", MaxStack = -1, IsActive = true, IconAssetRef = "ui/items/card_dust",        MetadataJson = "{}" },
+        new() { Id = 1, Key = "arcane_shard",     DisplayName = "Arcane Shard",     Description = "Uncommon crafting material. Required for rare and epic cards.",                                             Category = "crafting", MaxStack = -1, IsActive = true, IconAssetRef = "ui/items/arcane_shard",     MetadataJson = "{}" },
+        new() { Id = 2, Key = "essence_of_void",  DisplayName = "Essence of Void",  Description = "Rare crafting material obtained from special events. Required for legendary cards and upgrades.",          Category = "crafting", MaxStack = -1, IsActive = true, IconAssetRef = "ui/items/essence_of_void",  MetadataJson = "{}" },
+        new() { Id = 3, Key = "faction_ember",    DisplayName = "Ember Ember",      Description = "Faction-specific material from Ember faction matches. Used in Ember card crafting.",                       Category = "faction",  MaxStack = -1, IsActive = true, IconAssetRef = "ui/items/faction_ember",    MetadataJson = "{\"faction\":0}" },
+        new() { Id = 4, Key = "faction_tidal",    DisplayName = "Tidal Droplet",    Description = "Faction-specific material from Tidal faction matches.",                                                    Category = "faction",  MaxStack = -1, IsActive = true, IconAssetRef = "ui/items/faction_tidal",    MetadataJson = "{\"faction\":1}" },
+        new() { Id = 5, Key = "faction_grove",    DisplayName = "Grove Seed",       Description = "Faction-specific material from Grove faction matches.",                                                    Category = "faction",  MaxStack = -1, IsActive = true, IconAssetRef = "ui/items/faction_grove",    MetadataJson = "{\"faction\":2}" },
+        new() { Id = 6, Key = "faction_alloy",    DisplayName = "Alloy Scrap",      Description = "Faction-specific material from Alloy faction matches.",                                                    Category = "faction",  MaxStack = -1, IsActive = true, IconAssetRef = "ui/items/faction_alloy",    MetadataJson = "{\"faction\":3}" },
+        new() { Id = 7, Key = "faction_void",     DisplayName = "Void Crystal",     Description = "Faction-specific material from Void faction matches.",                                                    Category = "faction",  MaxStack = -1, IsActive = true, IconAssetRef = "ui/items/faction_void",     MetadataJson = "{\"faction\":4}" },
+        new() { Id = 8, Key = "upgrade_stone",    DisplayName = "Upgrade Stone",    Description = "Used to apply stat upgrades to player-owned cards.",                                                       Category = "upgrade",  MaxStack = -1, IsActive = true, IconAssetRef = "ui/items/upgrade_stone",    MetadataJson = "{}" },
+        new() { Id = 9, Key = "ability_tome",     DisplayName = "Ability Tome",     Description = "Rare item needed to add a new ability to an owned card.",                                                  Category = "upgrade",  MaxStack = -1, IsActive = true, IconAssetRef = "ui/items/ability_tome",     MetadataJson = "{}" }
+    };
+
     public static readonly EffectKindDefinition[] EffectKinds =
     {
         new() { Id = 0, Key = "damage", DisplayName = "Damage", Description = "Deals direct damage to one or more target cards.", Category = "math", IconAssetRef = "effects/damage", MetadataJson = "{}" },

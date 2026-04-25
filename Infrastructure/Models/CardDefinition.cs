@@ -24,6 +24,7 @@ public sealed class CardDefinition
     // Navigation
     public ICollection<CardAbilityDefinition> CardAbilities { get; set; } = new List<CardAbilityDefinition>();
     public ICollection<CardVisualProfileAssignment> VisualProfileAssignments { get; set; } = new List<CardVisualProfileAssignment>();
+    public ICollection<CardCraftingRequirement> CraftingRequirements { get; set; } = new List<CardCraftingRequirement>();
 
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? UpdatedAt { get; set; }
