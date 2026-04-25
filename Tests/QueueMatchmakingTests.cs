@@ -51,6 +51,24 @@ public class QueueMatchmakingTests
         return new ResolvedGameRules(rules.RulesetId, rules.DisplayName, rules, rules.ToSnapshotJson());
     }
 
+    private static CardDuel.ServerApi.Infrastructure.Models.PlayerDeck CreateDeck(string id, string userId, string deckId, string displayName, string cardDefinitionId) =>
+        new()
+        {
+            Id = id,
+            UserId = userId,
+            DeckId = deckId,
+            DisplayName = displayName,
+            DeckCards = new List<DeckCard>
+            {
+                new()
+                {
+                    Id = $"{id}-card-0",
+                    CardDefinitionId = cardDefinitionId,
+                    Position = 0
+                }
+            }
+        };
+
     [Fact]
     public void QueueForMatchRequest_ConstructorParametersExposeRequiredMetadata()
     {
@@ -113,20 +131,14 @@ public class QueueMatchmakingTests
             CardType = 0,
             CardRarity = 0,
             CardFaction = 0,
+            UnitType = (int)UnitType.Melee,
             AllowedRow = 2,
             DefaultAttackSelector = 1,
             TurnsUntilCanAttack = 1,
             IsLimited = false
         });
 
-        db.Decks.Add(new CardDuel.ServerApi.Infrastructure.Models.PlayerDeck
-        {
-            Id = "deck-db-1",
-            UserId = "user-1",
-            DeckId = "deck_playerone_1",
-            DisplayName = "Queue Test Deck",
-            CardIds = new List<string> { "ember_0001" }
-        });
+        db.Decks.Add(CreateDeck("deck-db-1", "user-1", "deck_playerone_1", "Queue Test Deck", "card-db-1"));
 
         db.SaveChanges();
         var resolvedRules = CreateResolvedGameRules(db);
@@ -173,29 +185,15 @@ public class QueueMatchmakingTests
             CardType = 0,
             CardRarity = 0,
             CardFaction = 0,
+            UnitType = (int)UnitType.Melee,
             AllowedRow = 2,
             DefaultAttackSelector = 1,
             TurnsUntilCanAttack = 1,
             IsLimited = false
         });
 
-        db.Decks.Add(new CardDuel.ServerApi.Infrastructure.Models.PlayerDeck
-        {
-            Id = "deck-db-1",
-            UserId = "user-1",
-            DeckId = "deck_playerone_1",
-            DisplayName = "Queue Test Deck P1",
-            CardIds = new List<string> { "ember_0001" }
-        });
-
-        db.Decks.Add(new CardDuel.ServerApi.Infrastructure.Models.PlayerDeck
-        {
-            Id = "deck-db-2",
-            UserId = "user-2",
-            DeckId = "deck_playertwo_1",
-            DisplayName = "Queue Test Deck P2",
-            CardIds = new List<string> { "ember_0001" }
-        });
+        db.Decks.Add(CreateDeck("deck-db-1", "user-1", "deck_playerone_1", "Queue Test Deck P1", "card-db-1"));
+        db.Decks.Add(CreateDeck("deck-db-2", "user-2", "deck_playertwo_1", "Queue Test Deck P2", "card-db-1"));
 
         db.SaveChanges();
         var resolvedRules = CreateResolvedGameRules(db);

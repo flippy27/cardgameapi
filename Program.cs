@@ -6,10 +6,12 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using Serilog;
+using Swashbuckle.AspNetCore.SwaggerUI;
 using CardDuel.ServerApi.Hubs;
 using CardDuel.ServerApi.Services;
 using CardDuel.ServerApi.Infrastructure;
 using CardDuel.ServerApi.Contracts;
+using CardDuel.ServerApi.Infrastructure.Swagger;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -33,23 +35,39 @@ builder.Services.AddValidatorsFromAssemblyContaining<CreateCardRequestValidator>
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(options =>
 {
+    options.SwaggerDoc("v1", new OpenApiInfo
+    {
+        Title = "CardDuel Server API",
+        Version = "v1",
+        Description = """
+        Server-authoritative API for CardDuel.
+
+        Recommended Swagger flow:
+        1. Use the CardDuel Swagger Helper panel to register or login.
+        2. Save the returned `playerId`, JWT token, deck ids, match ids, reconnect tokens, room codes, and ruleset ids in a local profile.
+        3. Use the request examples. Placeholders like `{{playerId}}`, `{{deckId}}`, and `{{matchId}}` are replaced by the helper before the request is sent.
+        4. For match snapshots, consume `battleEvents` in ascending `sequence`; that is the exact server-authoritative animation order.
+
+        SignalR hub: `/hubs/match?matchId=<matchId>&access_token=<jwt>`.
+        """,
+        Contact = new OpenApiContact
+        {
+            Name = "CardDuel API"
+        }
+    });
+
+    options.CustomSchemaIds(type => type.FullName?.Replace("+", ".") ?? type.Name);
+    options.SupportNonNullableReferenceTypes();
+    options.SchemaFilter<CardDuelSwaggerSchemaFilter>();
+    options.OperationFilter<CardDuelSwaggerOperationFilter>();
+    options.DocumentFilter<CardDuelSwaggerDocumentFilter>();
+
     options.AddSecurityDefinition("Bearer", new OpenApiSecurityScheme
     {
         Type = SecuritySchemeType.Http,
         Scheme = "bearer",
         BearerFormat = "JWT",
-        Description = "JWT Authorization header using the Bearer scheme.\r\n\r\n Enter your token in the text input below.\r\n\r\nExample: \"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...\""
-    });
-
-    options.AddSecurityRequirement(new OpenApiSecurityRequirement
-    {
-        {
-            new OpenApiSecurityScheme
-            {
-                Reference = new OpenApiReference { Type = ReferenceType.SecurityScheme, Id = "Bearer" }
-            },
-            new string[] { }
-        }
+        Description = "Paste only the JWT token. Swagger sends it as `Authorization: Bearer <token>`. The CardDuel helper can fill this automatically after login."
     });
 });
 
@@ -172,6 +190,8 @@ using (var scope = app.Services.CreateScope())
         migrationLogger.LogInformation("Database migrations completed successfully");
         CardCatalogSeeder.SeedCards(db);
         migrationLogger.LogInformation("Card catalog seeded");
+        AuthoringSeeder.SeedAuthoringData(db);
+        migrationLogger.LogInformation("Authoring lookup/template data seeded");
         GameRulesetSeeder.SeedDefaultRuleset(db);
         migrationLogger.LogInformation("Default game ruleset seeded");
     }
@@ -183,8 +203,23 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
+app.UseStaticFiles();
 app.UseSwagger();
-app.UseSwaggerUI();
+app.UseSwaggerUI(options =>
+{
+    options.DocumentTitle = "CardDuel API Workbench";
+    options.SwaggerEndpoint("/swagger/v1/swagger.json", "CardDuel Server API v1");
+    options.DocExpansion(DocExpansion.None);
+    options.DisplayRequestDuration();
+    options.EnableDeepLinking();
+    options.EnablePersistAuthorization();
+    options.ShowExtensions();
+    options.ShowCommonExtensions();
+    options.InjectStylesheet("/swagger-ui/cardduel-swagger.css");
+    options.InjectJavascript("/swagger-ui/cardduel-swagger.js");
+    options.UseRequestInterceptor("function(request) { if (window.cardDuelSwagger) { var token = window.cardDuelSwagger.getToken(); if (token && request.headers && !request.headers.Authorization) { request.headers.Authorization = 'Bearer ' + token; } request.url = window.cardDuelSwagger.replaceVariables(request.url); if (typeof request.body === 'string') { request.body = window.cardDuelSwagger.replaceVariables(request.body); } } return request; }");
+    options.UseResponseInterceptor("function(response) { if (window.cardDuelSwagger && typeof window.cardDuelSwagger.handleAuthResponse === 'function') { return window.cardDuelSwagger.handleAuthResponse(response); } return response; }");
+});
 app.UseMiddleware<CorrelationIdMiddleware>();
 app.UseMiddleware<MetricsMiddleware>();
 app.UseMiddleware<RateLimitMiddleware>();

@@ -116,6 +116,96 @@ public sealed class CardsController(
         return NoContent();
     }
 
+    // ===== PRESENTATION / VISUAL AUTHORING ENDPOINTS =====
+
+    [HttpGet("{cardId}/presentation")]
+    [AllowAnonymous]
+    public async Task<IActionResult> GetBattlePresentation(string cardId)
+    {
+        var card = await cardManagementService.GetCardWithAbilitiesAsync(cardId);
+        if (card == null)
+        {
+            return NotFound(new { message = $"Card '{cardId}' not found" });
+        }
+
+        return Ok(card.BattlePresentation);
+    }
+
+    [HttpPut("{cardId}/presentation")]
+    [Authorize]
+    public async Task<IActionResult> UpdateBattlePresentation(string cardId, [FromBody] UpsertBattlePresentationRequest request)
+    {
+        try
+        {
+            return Ok(await cardManagementService.UpdateBattlePresentationAsync(cardId, request));
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound(new { message = $"Card '{cardId}' not found" });
+        }
+    }
+
+    [HttpGet("{cardId}/visual-profiles")]
+    [AllowAnonymous]
+    public async Task<IActionResult> GetVisualProfiles(string cardId)
+    {
+        var card = await cardManagementService.GetCardWithAbilitiesAsync(cardId);
+        if (card == null)
+        {
+            return NotFound(new { message = $"Card '{cardId}' not found" });
+        }
+
+        return Ok(card.VisualProfiles);
+    }
+
+    [HttpPut("{cardId}/visual-profiles")]
+    [Authorize]
+    public async Task<IActionResult> ReplaceVisualProfiles(string cardId, [FromBody] IReadOnlyList<UpsertCardVisualProfileRequest> request)
+    {
+        try
+        {
+            return Ok(await cardManagementService.ReplaceVisualProfilesAsync(cardId, request));
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound(new { message = $"Card '{cardId}' not found" });
+        }
+    }
+
+    [HttpPut("{cardId}/visual-profiles/{profileKey}")]
+    [Authorize]
+    public async Task<IActionResult> UpsertVisualProfile(string cardId, string profileKey, [FromBody] UpsertCardVisualProfileRequest request)
+    {
+        try
+        {
+            return Ok(await cardManagementService.UpsertVisualProfileAsync(cardId, profileKey, request));
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound(new { message = $"Card '{cardId}' not found" });
+        }
+    }
+
+    [HttpDelete("{cardId}/visual-profiles/{profileKey}")]
+    [Authorize]
+    public async Task<IActionResult> DeleteVisualProfile(string cardId, string profileKey)
+    {
+        try
+        {
+            var deleted = await cardManagementService.DeleteVisualProfileAsync(cardId, profileKey);
+            if (!deleted)
+            {
+                return NotFound(new { message = $"Visual profile '{profileKey}' not found on card '{cardId}'" });
+            }
+
+            return NoContent();
+        }
+        catch (KeyNotFoundException)
+        {
+            return NotFound(new { message = $"Card '{cardId}' not found" });
+        }
+    }
+
     // ===== ABILITY ENDPOINTS =====
 
     [HttpPost("{cardId}/abilities")]
@@ -265,9 +355,10 @@ public sealed class CardsController(
         var deckCardIds = deckRepository.GetDeck(playerid, deckid);
         var card_ids = deckCardIds.CardIds;
 
-        var allCards = cardCatalogService.GetAll().Values
-            .Where(c => card_ids.Contains(c.CardId))
-            .OrderBy(c => c.DisplayName)
+        var catalog = cardCatalogService.GetAll();
+        var allCards = card_ids
+            .Where(cardId => catalog.ContainsKey(cardId))
+            .Select(cardId => catalog[cardId])
             .ToList();
 
         return Ok(allCards);
@@ -408,15 +499,14 @@ public sealed class CardsController(
     [AllowAnonymous]
     public IActionResult GetEffectDefinitions()
     {
-        var effects = new List<object>();
-        for (int i = 0; i <= 26; i++)
-        {
-            effects.Add(new
+        var effects = Enum.GetValues<Game.EffectKind>()
+            .Select(effect => new
             {
-                kind = i,
-                name = ((Game.EffectKind)i).ToString()
-            });
-        }
+                kind = (int)effect,
+                name = effect.ToString()
+            })
+            .ToList();
+
         return Ok(effects);
     }
 
@@ -424,15 +514,14 @@ public sealed class CardsController(
     [AllowAnonymous]
     public IActionResult GetTriggerDefinitions()
     {
-        var triggers = new List<object>();
-        for (int i = 0; i <= 3; i++)
-        {
-            triggers.Add(new
+        var triggers = Enum.GetValues<Game.TriggerKind>()
+            .Select(trigger => new
             {
-                kind = i,
-                name = ((Game.TriggerKind)i).ToString()
-            });
-        }
+                kind = (int)trigger,
+                name = trigger.ToString()
+            })
+            .ToList();
+
         return Ok(triggers);
     }
 
@@ -440,15 +529,14 @@ public sealed class CardsController(
     [AllowAnonymous]
     public IActionResult GetTargetSelectorDefinitions()
     {
-        var selectors = new List<object>();
-        for (int i = 0; i <= 4; i++)
-        {
-            selectors.Add(new
+        var selectors = Enum.GetValues<Game.TargetSelectorKind>()
+            .Select(selector => new
             {
-                kind = i,
-                name = ((Game.TargetSelectorKind)i).ToString()
-            });
-        }
+                kind = (int)selector,
+                name = selector.ToString()
+            })
+            .ToList();
+
         return Ok(selectors);
     }
 
@@ -456,15 +544,14 @@ public sealed class CardsController(
     [AllowAnonymous]
     public IActionResult GetSkillTypeDefinitions()
     {
-        var types = new List<object>();
-        for (int i = 0; i <= 4; i++)
-        {
-            types.Add(new
+        var types = Enum.GetValues<Game.SkillType>()
+            .Select(type => new
             {
-                type = i,
-                name = ((Game.SkillType)i).ToString()
-            });
-        }
+                type = (int)type,
+                name = type.ToString()
+            })
+            .ToList();
+
         return Ok(types);
     }
 

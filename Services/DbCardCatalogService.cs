@@ -34,7 +34,17 @@ public sealed class DbCardCatalogService(AppDbContext dbContext) : ICardCatalogS
                     a.DisplayName ?? a.AbilityId,
                     (TriggerKind)a.TriggerKind,
                     (TargetSelectorKind)a.TargetSelectorKind,
-                    a.Effects.OrderBy(e => e.Sequence).Select(e => new ServerEffectDefinition((EffectKind)e.EffectKind, e.Amount)).ToList()
+                    a.Effects.OrderBy(e => e.Sequence).Select(e => new ServerEffectDefinition(
+                        (EffectKind)e.EffectKind,
+                        e.Amount,
+                        e.SecondaryAmount,
+                        e.DurationTurns,
+                        e.TargetSelectorKindOverride.HasValue ? (TargetSelectorKind)e.TargetSelectorKindOverride.Value : null,
+                        e.MetadataJson)).ToList(),
+                    (SkillType)a.SkillType,
+                    string.IsNullOrWhiteSpace(a.AnimationCueId) ? null : a.AnimationCueId,
+                    a.ConditionsJson,
+                    a.MetadataJson
                 )).ToList().AsReadOnly();
 
             var def = new ServerCardDefinition(

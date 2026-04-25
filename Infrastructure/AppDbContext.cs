@@ -7,6 +7,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
 {
     public DbSet<UserAccount> Users { get; set; } = null!;
     public DbSet<PlayerDeck> Decks { get; set; } = null!;
+    public DbSet<DeckCard> DeckCards { get; set; } = null!;
     public DbSet<MatchRecord> Matches { get; set; } = null!;
     public DbSet<GameRuleset> GameRulesets { get; set; } = null!;
     public DbSet<GameRulesetSeatOverride> GameRulesetSeatOverrides { get; set; } = null!;
@@ -17,6 +18,13 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<AbilityDefinition> Abilities { get; set; } = null!;
     public DbSet<CardAbilityDefinition> CardAbilities { get; set; } = null!;
     public DbSet<EffectDefinition> Effects { get; set; } = null!;
+    public DbSet<SkillTypeDefinition> SkillTypeDefinitions { get; set; } = null!;
+    public DbSet<TriggerKindDefinition> TriggerKindDefinitions { get; set; } = null!;
+    public DbSet<TargetSelectorKindDefinition> TargetSelectorKindDefinitions { get; set; } = null!;
+    public DbSet<EffectKindDefinition> EffectKindDefinitions { get; set; } = null!;
+    public DbSet<StatusEffectKindDefinition> StatusEffectKindDefinitions { get; set; } = null!;
+    public DbSet<CardVisualProfileTemplate> CardVisualProfileTemplates { get; set; } = null!;
+    public DbSet<CardVisualProfileAssignment> CardVisualProfileAssignments { get; set; } = null!;
     public DbSet<AuditLog> AuditLogs { get; set; } = null!;
     public DbSet<MatchAction> MatchActions { get; set; } = null!;
 
@@ -48,17 +56,30 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             e.Property(x => x.UserId).HasColumnName("user_id");
             e.Property(x => x.DeckId).HasColumnName("deck_id").HasMaxLength(128);
             e.Property(x => x.DisplayName).HasColumnName("display_name").HasMaxLength(255);
-            e.Property(x => x.CardIds).HasColumnName("card_ids")
-                .HasConversion(
-                    v => string.Join(",", v),
-                    v => v.Split(",", StringSplitOptions.RemoveEmptyEntries).ToList())
-                .Metadata.SetValueComparer(new Microsoft.EntityFrameworkCore.ChangeTracking.ValueComparer<List<string>>(
-                    (c1, c2) => c1!.SequenceEqual(c2!),
-                    c => c.Aggregate(0, (a, v) => HashCode.Combine(a, v.GetHashCode())),
-                    c => c.ToList()));
             e.Property(x => x.CreatedAt).HasColumnName("created_at");
             e.Property(x => x.UpdatedAt).HasColumnName("updated_at");
             e.HasIndex(x => new { x.UserId, x.DeckId }).IsUnique();
+            e.HasMany(x => x.DeckCards)
+                .WithOne(x => x.Deck)
+                .HasForeignKey(x => x.DeckId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<DeckCard>(e =>
+        {
+            e.ToTable("deck_cards");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id");
+            e.Property(x => x.DeckId).HasColumnName("deck_id");
+            e.Property(x => x.CardDefinitionId).HasColumnName("card_definition_id");
+            e.Property(x => x.Position).HasColumnName("position");
+            e.Property(x => x.CreatedAt).HasColumnName("created_at");
+            e.HasIndex(x => new { x.DeckId, x.Position });
+            e.HasIndex(x => x.CardDefinitionId);
+            e.HasOne(x => x.CardDefinition)
+                .WithMany()
+                .HasForeignKey(x => x.CardDefinitionId)
+                .OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<MatchRecord>(e =>
@@ -195,6 +216,7 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             e.Property(x => x.UpdatedAt).HasColumnName("updated_at");
             e.HasIndex(x => x.CardId).IsUnique();
             e.HasMany(x => x.CardAbilities).WithOne(ca => ca.CardDefinition).HasForeignKey(ca => ca.CardDefinitionId);
+            e.HasMany(x => x.VisualProfileAssignments).WithOne(x => x.CardDefinition).HasForeignKey(x => x.CardDefinitionId);
         });
 
         modelBuilder.Entity<AbilityDefinition>(e =>
@@ -205,13 +227,26 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             e.Property(x => x.AbilityId).HasColumnName("ability_id").HasMaxLength(128);
             e.Property(x => x.DisplayName).HasColumnName("display_name").HasMaxLength(255);
             e.Property(x => x.Description).HasColumnName("description").HasMaxLength(512);
+            e.Property(x => x.SkillType).HasColumnName("skill_type");
             e.Property(x => x.TriggerKind).HasColumnName("trigger_kind");
             e.Property(x => x.TargetSelectorKind).HasColumnName("target_selector_kind");
+            e.Property(x => x.AnimationCueId).HasColumnName("animation_cue_id").HasMaxLength(128);
+            e.Property(x => x.IconAssetRef).HasColumnName("icon_asset_ref").HasMaxLength(255);
+            e.Property(x => x.StatusIconAssetRef).HasColumnName("status_icon_asset_ref").HasMaxLength(255);
+            e.Property(x => x.VfxCueId).HasColumnName("vfx_cue_id").HasMaxLength(128);
+            e.Property(x => x.AudioCueId).HasColumnName("audio_cue_id").HasMaxLength(128);
+            e.Property(x => x.UiColorHex).HasColumnName("ui_color_hex").HasMaxLength(16);
+            e.Property(x => x.TooltipSummary).HasColumnName("tooltip_summary").HasMaxLength(512);
+            e.Property(x => x.ConditionsJson).HasColumnName("conditions_json").HasColumnType("jsonb");
+            e.Property(x => x.MetadataJson).HasColumnName("metadata_json").HasColumnType("jsonb");
             e.Property(x => x.CreatedAt).HasColumnName("created_at");
             e.Property(x => x.UpdatedAt).HasColumnName("updated_at");
             e.HasIndex(x => x.AbilityId).IsUnique();
             e.HasMany(x => x.CardAbilities).WithOne(ca => ca.AbilityDefinition).HasForeignKey(ca => ca.AbilityDefinitionId);
             e.HasMany(x => x.Effects).WithOne(ef => ef.AbilityDefinition).HasForeignKey(ef => ef.AbilityDefinitionId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<SkillTypeDefinition>().WithMany().HasForeignKey(x => x.SkillType).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<TriggerKindDefinition>().WithMany().HasForeignKey(x => x.TriggerKind).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<TargetSelectorKindDefinition>().WithMany().HasForeignKey(x => x.TargetSelectorKind).OnDelete(DeleteBehavior.Restrict);
         });
 
         modelBuilder.Entity<CardAbilityDefinition>(e =>
@@ -232,10 +267,128 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             e.Property(x => x.Id).HasColumnName("id");
             e.Property(x => x.EffectKind).HasColumnName("effect_kind");
             e.Property(x => x.Amount).HasColumnName("amount");
+            e.Property(x => x.SecondaryAmount).HasColumnName("secondary_amount");
+            e.Property(x => x.DurationTurns).HasColumnName("duration_turns");
+            e.Property(x => x.TargetSelectorKindOverride).HasColumnName("target_selector_kind_override");
             e.Property(x => x.Sequence).HasColumnName("sequence");
+            e.Property(x => x.MetadataJson).HasColumnName("metadata_json").HasColumnType("jsonb");
             e.Property(x => x.AbilityDefinitionId).HasColumnName("ability_definition_id");
             e.Property(x => x.CreatedAt).HasColumnName("created_at");
             e.HasIndex(x => new { x.AbilityDefinitionId, x.Sequence }).IsUnique();
+            e.HasOne<EffectKindDefinition>().WithMany().HasForeignKey(x => x.EffectKind).OnDelete(DeleteBehavior.Restrict);
+            e.HasOne<TargetSelectorKindDefinition>().WithMany().HasForeignKey(x => x.TargetSelectorKindOverride).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<SkillTypeDefinition>(e =>
+        {
+            e.ToTable("ability_skill_type_definitions");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").ValueGeneratedNever();
+            e.Property(x => x.Key).HasColumnName("key").HasMaxLength(64);
+            e.Property(x => x.DisplayName).HasColumnName("display_name").HasMaxLength(128);
+            e.Property(x => x.Description).HasColumnName("description").HasMaxLength(1024);
+            e.Property(x => x.Category).HasColumnName("category").HasMaxLength(64);
+            e.Property(x => x.IconAssetRef).HasColumnName("icon_asset_ref").HasMaxLength(255);
+            e.Property(x => x.MetadataJson).HasColumnName("metadata_json").HasColumnType("jsonb");
+            e.HasIndex(x => x.Key).IsUnique();
+            e.HasData(AuthoringDefinitions.SkillTypes);
+        });
+
+        modelBuilder.Entity<TriggerKindDefinition>(e =>
+        {
+            e.ToTable("ability_trigger_kind_definitions");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").ValueGeneratedNever();
+            e.Property(x => x.Key).HasColumnName("key").HasMaxLength(64);
+            e.Property(x => x.DisplayName).HasColumnName("display_name").HasMaxLength(128);
+            e.Property(x => x.Description).HasColumnName("description").HasMaxLength(1024);
+            e.Property(x => x.Category).HasColumnName("category").HasMaxLength(64);
+            e.Property(x => x.IconAssetRef).HasColumnName("icon_asset_ref").HasMaxLength(255);
+            e.Property(x => x.MetadataJson).HasColumnName("metadata_json").HasColumnType("jsonb");
+            e.HasIndex(x => x.Key).IsUnique();
+            e.HasData(AuthoringDefinitions.TriggerKinds);
+        });
+
+        modelBuilder.Entity<TargetSelectorKindDefinition>(e =>
+        {
+            e.ToTable("target_selector_kind_definitions");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").ValueGeneratedNever();
+            e.Property(x => x.Key).HasColumnName("key").HasMaxLength(64);
+            e.Property(x => x.DisplayName).HasColumnName("display_name").HasMaxLength(128);
+            e.Property(x => x.Description).HasColumnName("description").HasMaxLength(1024);
+            e.Property(x => x.Category).HasColumnName("category").HasMaxLength(64);
+            e.Property(x => x.IconAssetRef).HasColumnName("icon_asset_ref").HasMaxLength(255);
+            e.Property(x => x.MetadataJson).HasColumnName("metadata_json").HasColumnType("jsonb");
+            e.HasIndex(x => x.Key).IsUnique();
+            e.HasData(AuthoringDefinitions.TargetSelectors);
+        });
+
+        modelBuilder.Entity<EffectKindDefinition>(e =>
+        {
+            e.ToTable("effect_kind_definitions");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").ValueGeneratedNever();
+            e.Property(x => x.Key).HasColumnName("key").HasMaxLength(64);
+            e.Property(x => x.DisplayName).HasColumnName("display_name").HasMaxLength(128);
+            e.Property(x => x.Description).HasColumnName("description").HasMaxLength(1024);
+            e.Property(x => x.Category).HasColumnName("category").HasMaxLength(64);
+            e.Property(x => x.ProducesStatusKind).HasColumnName("produces_status_kind");
+            e.Property(x => x.IconAssetRef).HasColumnName("icon_asset_ref").HasMaxLength(255);
+            e.Property(x => x.MetadataJson).HasColumnName("metadata_json").HasColumnType("jsonb");
+            e.HasIndex(x => x.Key).IsUnique();
+            e.HasData(AuthoringDefinitions.EffectKinds);
+            e.HasOne<StatusEffectKindDefinition>().WithMany().HasForeignKey(x => x.ProducesStatusKind).OnDelete(DeleteBehavior.Restrict);
+        });
+
+        modelBuilder.Entity<StatusEffectKindDefinition>(e =>
+        {
+            e.ToTable("status_effect_kind_definitions");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id").ValueGeneratedNever();
+            e.Property(x => x.Key).HasColumnName("key").HasMaxLength(64);
+            e.Property(x => x.DisplayName).HasColumnName("display_name").HasMaxLength(128);
+            e.Property(x => x.Description).HasColumnName("description").HasMaxLength(1024);
+            e.Property(x => x.Category).HasColumnName("category").HasMaxLength(64);
+            e.Property(x => x.IconAssetRef).HasColumnName("icon_asset_ref").HasMaxLength(255);
+            e.Property(x => x.VfxCueId).HasColumnName("vfx_cue_id").HasMaxLength(128);
+            e.Property(x => x.UiColorHex).HasColumnName("ui_color_hex").HasMaxLength(16);
+            e.Property(x => x.MetadataJson).HasColumnName("metadata_json").HasColumnType("jsonb");
+            e.HasIndex(x => x.Key).IsUnique();
+            e.HasData(AuthoringDefinitions.StatusEffectKinds);
+        });
+
+        modelBuilder.Entity<CardVisualProfileTemplate>(e =>
+        {
+            e.ToTable("card_visual_profile_templates");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id");
+            e.Property(x => x.ProfileKey).HasColumnName("profile_key").HasMaxLength(128);
+            e.Property(x => x.DisplayName).HasColumnName("display_name").HasMaxLength(128);
+            e.Property(x => x.Description).HasColumnName("description").HasMaxLength(1024);
+            e.Property(x => x.IsActive).HasColumnName("is_active");
+            e.Property(x => x.LayersJson).HasColumnName("layers_json").HasColumnType("jsonb");
+            e.Property(x => x.MetadataJson).HasColumnName("metadata_json").HasColumnType("jsonb");
+            e.Property(x => x.CreatedAt).HasColumnName("created_at");
+            e.Property(x => x.UpdatedAt).HasColumnName("updated_at");
+            e.HasIndex(x => x.ProfileKey).IsUnique();
+        });
+
+        modelBuilder.Entity<CardVisualProfileAssignment>(e =>
+        {
+            e.ToTable("card_visual_profile_assignments");
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).HasColumnName("id");
+            e.Property(x => x.CardDefinitionId).HasColumnName("card_definition_id");
+            e.Property(x => x.TemplateId).HasColumnName("template_id");
+            e.Property(x => x.IsDefault).HasColumnName("is_default");
+            e.Property(x => x.OverrideDisplayName).HasColumnName("override_display_name").HasMaxLength(128);
+            e.Property(x => x.OverrideLayersJson).HasColumnName("override_layers_json").HasColumnType("jsonb");
+            e.Property(x => x.MetadataJson).HasColumnName("metadata_json").HasColumnType("jsonb");
+            e.Property(x => x.CreatedAt).HasColumnName("created_at");
+            e.Property(x => x.UpdatedAt).HasColumnName("updated_at");
+            e.HasIndex(x => new { x.CardDefinitionId, x.TemplateId }).IsUnique();
+            e.HasOne(x => x.Template).WithMany().HasForeignKey(x => x.TemplateId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<AuditLog>(e =>

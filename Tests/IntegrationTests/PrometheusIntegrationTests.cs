@@ -3,6 +3,7 @@ using CardDuel.ServerApi.Infrastructure;
 
 namespace CardDuel.ServerApi.Tests;
 
+[Collection(PrometheusTestCollection.Name)]
 public class PrometheusIntegrationTests
 {
     [Fact]

@@ -8,7 +8,8 @@ public class MatchEngineTests
 {
     private static GameRules CreateRules(
         ManaGrantTiming manaGrantTiming = ManaGrantTiming.StartOfTurn,
-        IReadOnlyList<GameRulesSeatOverride>? seatOverrides = null)
+        IReadOnlyList<GameRulesSeatOverride>? seatOverrides = null,
+        int initialDrawCount = 4)
     {
         return new GameRules(
             RulesetId: "rules-default",
@@ -23,16 +24,48 @@ public class MatchEngineTests
             MaxMana: 10,
             ManaGrantedPerTurn: 1,
             ManaGrantTiming: manaGrantTiming,
-            InitialDrawCount: 4,
+            InitialDrawCount: initialDrawCount,
             CardsDrawnOnTurnStart: 1,
             StartingSeatIndex: 0,
             SeatOverrides: seatOverrides ?? Array.Empty<GameRulesSeatOverride>());
     }
 
-    private ServerCardDefinition CreateCard(string id, string name, int mana = 2, int attack = 2, int health = 2)
+    private ServerCardDefinition CreateCard(string id, string name, int mana = 2, int attack = 2, int health = 2, UnitType unitType = UnitType.Melee)
     {
         return new ServerCardDefinition(
-            id, name, "", mana, attack, health, 0, 0, 0, 0, null, AllowedRow.Flexible, TargetSelectorKind.FrontlineFirst, 1, Array.Empty<ServerAbilityDefinition>());
+            id, name, "", mana, attack, health, 0, 0, 0, 0, (int)unitType, AllowedRow.Flexible, TargetSelectorKind.FrontlineFirst, 1, Array.Empty<ServerAbilityDefinition>());
+    }
+
+    private ServerCardDefinition CreateCardWithAbilities(
+        string id,
+        string name,
+        IReadOnlyList<ServerAbilityDefinition> abilities,
+        int mana = 1,
+        int attack = 2,
+        int health = 4,
+        int armor = 0)
+    {
+        return new ServerCardDefinition(
+            id, name, "", mana, attack, health, armor, 0, 0, 0, (int)UnitType.Melee, AllowedRow.Flexible,
+            TargetSelectorKind.FrontlineFirst, 1, abilities);
+    }
+
+    private static ServerAbilityDefinition Ability(
+        string id,
+        TriggerKind trigger,
+        TargetSelectorKind selector,
+        params ServerEffectDefinition[] effects)
+    {
+        return new ServerAbilityDefinition(
+            id,
+            id,
+            trigger,
+            selector,
+            effects,
+            SkillType.Offensive,
+            $"anim_{id}",
+            "{}",
+            "{\"normalAttackModifier\":true}");
     }
 
     [Fact]
@@ -263,5 +296,230 @@ public class MatchEngineTests
         var exception = Assert.Throws<GameActionException>(() => engine.PlayCard("player1", card.RuntimeHandKey, BoardSlot.Front));
 
         Assert.Equal("not_enough_mana", exception.Code);
+    }
+
+    [Fact]
+    public void BattlePhase_ShieldBlocksNextDamageAndEmitsOrderedEvents()
+    {
+        var engine = new MatchEngine("match1", "ABC123", QueueMode.Casual, TimeSpan.FromSeconds(20), CreateRules());
+        var shield = new ServerAbilityDefinition(
+            "shield",
+            "Shield",
+            TriggerKind.OnPlay,
+            TargetSelectorKind.Self,
+            new[] { new ServerEffectDefinition(EffectKind.AddShield, 1, DurationTurns: 99) },
+            SkillType.Defensive);
+        var cards = new[]
+        {
+            CreateCard("attacker", "Attacker", mana: 1, attack: 3, health: 4),
+            CreateCardWithAbilities("shield_target", "Shield Target", new[] { shield }, attack: 0, health: 5)
+        };
+
+        engine.ReserveSeat("player1", "deck1", cards);
+        engine.ReserveSeat("player2", "deck2", cards);
+        engine.SetReady("player1", true);
+        engine.SetReady("player2", true);
+
+        engine.PlayCard("player1", engine.Seats[0].Hand.Single(card => card.Definition.CardId == "attacker").RuntimeHandKey, BoardSlot.Front);
+        engine.EndTurn("player1");
+        engine.PlayCard("player2", engine.Seats[1].Hand.Single(card => card.Definition.CardId == "shield_target").RuntimeHandKey, BoardSlot.Front);
+        engine.EndTurn("player2");
+        engine.EndTurn("player1");
+
+        var target = engine.Seats[1].Board[BoardSlot.Front]!;
+        var events = engine.CreateSnapshotForSeat(0).BattleEvents;
+
+        Assert.Equal(5, target.CurrentHealth);
+        Assert.Contains(events, e => e.Kind == "status_applied" && e.StatusKind == StatusEffectKind.Shield);
+        Assert.True(events.Single(e => e.Kind == "card_attack").Sequence < events.Single(e => e.Kind == "shield_block").Sequence);
+    }
+
+    [Fact]
+    public void BattlePhase_PoisonAppliesAfterAttackAndTicksBeforeOwnersAttack()
+    {
+        var engine = new MatchEngine("match1", "ABC123", QueueMode.Casual, TimeSpan.FromSeconds(20), CreateRules());
+        var poison = Ability(
+            "poison",
+            TriggerKind.OnBattlePhase,
+            TargetSelectorKind.Self,
+            new ServerEffectDefinition(EffectKind.ApplyPoison, 1, DurationTurns: 2));
+        var cards = new[]
+        {
+            CreateCardWithAbilities("poisoner", "Poisoner", new[] { poison }, attack: 1, health: 4),
+            CreateCard("target", "Target", mana: 1, attack: 0, health: 5)
+        };
+
+        engine.ReserveSeat("player1", "deck1", cards);
+        engine.ReserveSeat("player2", "deck2", cards);
+        engine.SetReady("player1", true);
+        engine.SetReady("player2", true);
+
+        engine.PlayCard("player1", engine.Seats[0].Hand.Single(card => card.Definition.CardId == "poisoner").RuntimeHandKey, BoardSlot.Front);
+        engine.EndTurn("player1");
+        engine.PlayCard("player2", engine.Seats[1].Hand.Single(card => card.Definition.CardId == "target").RuntimeHandKey, BoardSlot.Front);
+        engine.EndTurn("player2");
+        engine.EndTurn("player1");
+
+        var poisoned = engine.Seats[1].Board[BoardSlot.Front]!;
+        Assert.Equal(4, poisoned.CurrentHealth);
+        Assert.Contains(poisoned.StatusEffects, status => status.Kind == StatusEffectKind.Poison && status.RemainingTurns == 2);
+
+        engine.EndTurn("player2");
+
+        Assert.Equal(3, poisoned.CurrentHealth);
+        Assert.Contains(engine.CreateSnapshotForSeat(0).BattleEvents, e => e.Kind == "card_damage" && e.EffectKind == EffectKind.ApplyPoison);
+    }
+
+    [Fact]
+    public void BattlePhase_StunIsConsumedAndTargetSkipsNextAttack()
+    {
+        var engine = new MatchEngine("match1", "ABC123", QueueMode.Casual, TimeSpan.FromSeconds(20), CreateRules());
+        var stun = Ability(
+            "stun",
+            TriggerKind.OnBattlePhase,
+            TargetSelectorKind.Self,
+            new ServerEffectDefinition(EffectKind.ApplyStun, 0, DurationTurns: 1));
+        var cards = new[]
+        {
+            CreateCardWithAbilities("stunner", "Stunner", new[] { stun }, attack: 1, health: 4),
+            CreateCard("target", "Target", mana: 1, attack: 4, health: 5)
+        };
+
+        engine.ReserveSeat("player1", "deck1", cards);
+        engine.ReserveSeat("player2", "deck2", cards);
+        engine.SetReady("player1", true);
+        engine.SetReady("player2", true);
+
+        engine.PlayCard("player1", engine.Seats[0].Hand.Single(card => card.Definition.CardId == "stunner").RuntimeHandKey, BoardSlot.Front);
+        engine.EndTurn("player1");
+        engine.PlayCard("player2", engine.Seats[1].Hand.Single(card => card.Definition.CardId == "target").RuntimeHandKey, BoardSlot.Front);
+        engine.EndTurn("player2");
+        engine.EndTurn("player1");
+        engine.EndTurn("player2");
+
+        var events = engine.CreateSnapshotForSeat(0).BattleEvents;
+        Assert.Contains(events, e => e.Kind == "status_applied" && e.StatusKind == StatusEffectKind.Stun);
+        Assert.Contains(events, e => e.Kind == "stun_skip");
+    }
+
+    [Fact]
+    public void BattlePhase_EnrageAttacksTwiceThenSkipsNextAttack()
+    {
+        var engine = new MatchEngine("match1", "ABC123", QueueMode.Casual, TimeSpan.FromSeconds(20), CreateRules());
+        var enrage = Ability("enrage", TriggerKind.OnBattlePhase, TargetSelectorKind.Self);
+        var cards = new[]
+        {
+            CreateCardWithAbilities("enraged", "Enraged", new[] { enrage }, attack: 1, health: 4),
+            CreateCard("target", "Target", mana: 1, attack: 0, health: 8)
+        };
+
+        engine.ReserveSeat("player1", "deck1", cards);
+        engine.ReserveSeat("player2", "deck2", cards);
+        engine.SetReady("player1", true);
+        engine.SetReady("player2", true);
+
+        engine.PlayCard("player1", engine.Seats[0].Hand.Single(card => card.Definition.CardId == "enraged").RuntimeHandKey, BoardSlot.Front);
+        engine.EndTurn("player1");
+        engine.PlayCard("player2", engine.Seats[1].Hand.Single(card => card.Definition.CardId == "target").RuntimeHandKey, BoardSlot.Front);
+        engine.EndTurn("player2");
+        engine.EndTurn("player1");
+
+        var target = engine.Seats[1].Board[BoardSlot.Front]!;
+        Assert.Equal(6, target.CurrentHealth);
+
+        engine.EndTurn("player2");
+        engine.EndTurn("player1");
+
+        Assert.Contains(engine.CreateSnapshotForSeat(0).BattleEvents, e => e.Kind == "enrage_cooldown_skip");
+    }
+
+    [Fact]
+    public void BattlePhase_RangedCardInFrontDoesNotAttack()
+    {
+        var engine = new MatchEngine("match1", "ABC123", QueueMode.Casual, TimeSpan.FromSeconds(20), CreateRules());
+        var cards = new[]
+        {
+            CreateCard("ranged", "Ranged", mana: 1, attack: 3, health: 4, unitType: UnitType.Ranged),
+            CreateCard("target", "Target", mana: 1, attack: 0, health: 5)
+        };
+
+        engine.ReserveSeat("player1", "deck1", cards);
+        engine.ReserveSeat("player2", "deck2", cards);
+        engine.SetReady("player1", true);
+        engine.SetReady("player2", true);
+
+        engine.PlayCard("player1", engine.Seats[0].Hand.Single(card => card.Definition.CardId == "ranged").RuntimeHandKey, BoardSlot.Front);
+        engine.EndTurn("player1");
+        engine.PlayCard("player2", engine.Seats[1].Hand.Single(card => card.Definition.CardId == "target").RuntimeHandKey, BoardSlot.Front);
+        engine.EndTurn("player2");
+        engine.EndTurn("player1");
+
+        Assert.Equal(5, engine.Seats[1].Board[BoardSlot.Front]!.CurrentHealth);
+        Assert.Contains(engine.CreateSnapshotForSeat(0).BattleEvents, e => e.Kind == "attack_position_blocked");
+    }
+
+    [Fact]
+    public void BattlePhase_RangedCardAttacksStraightLaneBeforeFront()
+    {
+        var engine = new MatchEngine("match1", "ABC123", QueueMode.Casual, TimeSpan.FromSeconds(20), CreateRules());
+        var cards = new[]
+        {
+            CreateCard("p1_front", "P1 Front", mana: 1, attack: 0, health: 5),
+            CreateCard("p1_ranged", "P1 Ranged", mana: 1, attack: 2, health: 4, unitType: UnitType.Ranged),
+            CreateCard("p2_front", "P2 Front", mana: 1, attack: 0, health: 8),
+            CreateCard("p2_left", "P2 Left", mana: 1, attack: 0, health: 8, unitType: UnitType.Ranged)
+        };
+
+        engine.ReserveSeat("player1", "deck1", cards);
+        engine.ReserveSeat("player2", "deck2", cards);
+        engine.SetReady("player1", true);
+        engine.SetReady("player2", true);
+
+        engine.PlayCard("player1", engine.Seats[0].Hand.Single(card => card.Definition.CardId == "p1_front").RuntimeHandKey, BoardSlot.Front);
+        engine.EndTurn("player1");
+        engine.PlayCard("player2", engine.Seats[1].Hand.Single(card => card.Definition.CardId == "p2_front").RuntimeHandKey, BoardSlot.Front);
+        engine.EndTurn("player2");
+        engine.PlayCard("player1", engine.Seats[0].Hand.Single(card => card.Definition.CardId == "p1_ranged").RuntimeHandKey, BoardSlot.BackLeft);
+        engine.EndTurn("player1");
+        engine.PlayCard("player2", engine.Seats[1].Hand.Single(card => card.Definition.CardId == "p2_left").RuntimeHandKey, BoardSlot.BackLeft);
+        engine.EndTurn("player2");
+        engine.EndTurn("player1");
+
+        Assert.Equal(8, engine.Seats[1].Board[BoardSlot.Front]!.CurrentHealth);
+        Assert.Equal(6, engine.Seats[1].Board[BoardSlot.BackLeft]!.CurrentHealth);
+    }
+
+    [Fact]
+    public void BattlePhase_MagicCardAttacksDiagonalLaneBeforeFront()
+    {
+        var engine = new MatchEngine("match1", "ABC123", QueueMode.Casual, TimeSpan.FromSeconds(20), CreateRules(initialDrawCount: 5));
+        var cards = new[]
+        {
+            CreateCard("p1_front", "P1 Front", mana: 1, attack: 0, health: 5),
+            CreateCard("p1_magic", "P1 Magic", mana: 1, attack: 2, health: 4, unitType: UnitType.Magic),
+            CreateCard("p2_front", "P2 Front", mana: 1, attack: 0, health: 8),
+            CreateCard("p2_left", "P2 Left", mana: 1, attack: 0, health: 8, unitType: UnitType.Ranged),
+            CreateCard("p2_right", "P2 Right", mana: 1, attack: 0, health: 8, unitType: UnitType.Ranged)
+        };
+
+        engine.ReserveSeat("player1", "deck1", cards);
+        engine.ReserveSeat("player2", "deck2", cards);
+        engine.SetReady("player1", true);
+        engine.SetReady("player2", true);
+
+        engine.PlayCard("player1", engine.Seats[0].Hand.Single(card => card.Definition.CardId == "p1_front").RuntimeHandKey, BoardSlot.Front);
+        engine.EndTurn("player1");
+        engine.PlayCard("player2", engine.Seats[1].Hand.Single(card => card.Definition.CardId == "p2_front").RuntimeHandKey, BoardSlot.Front);
+        engine.PlayCard("player2", engine.Seats[1].Hand.Single(card => card.Definition.CardId == "p2_left").RuntimeHandKey, BoardSlot.BackLeft);
+        engine.EndTurn("player2");
+        engine.PlayCard("player1", engine.Seats[0].Hand.Single(card => card.Definition.CardId == "p1_magic").RuntimeHandKey, BoardSlot.BackLeft);
+        engine.EndTurn("player1");
+        engine.PlayCard("player2", engine.Seats[1].Hand.Single(card => card.Definition.CardId == "p2_right").RuntimeHandKey, BoardSlot.BackRight);
+        engine.EndTurn("player2");
+        engine.EndTurn("player1");
+
+        Assert.Equal(8, engine.Seats[1].Board[BoardSlot.Front]!.CurrentHealth);
+        Assert.Equal(8, engine.Seats[1].Board[BoardSlot.BackLeft]!.CurrentHealth);
+        Assert.Equal(6, engine.Seats[1].Board[BoardSlot.BackRight]!.CurrentHealth);
     }
 }

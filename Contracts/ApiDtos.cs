@@ -161,6 +161,22 @@ public sealed record DeckUpsertRequest(
     [Required] string DisplayName,
     [Required] IReadOnlyList<string> CardIds);
 
+public sealed record DeckCardEntryDto(
+    string EntryId,
+    string CardId,
+    int Position);
+
+public sealed record DeckDetailsDto(
+    string PlayerId,
+    string DeckId,
+    string DisplayName,
+    IReadOnlyList<DeckCardEntryDto> Cards,
+    IReadOnlyList<string> CardIds);
+
+public sealed record AddDeckCardRequest(
+    [Required] string CardId,
+    int? Position = null);
+
 public sealed record MatchCompletionRequest(
     [Required] string PlayerId,
     [Required] string OpponentId,

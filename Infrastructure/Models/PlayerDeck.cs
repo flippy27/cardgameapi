@@ -6,7 +6,7 @@ public sealed class PlayerDeck
     public string UserId { get; set; } = string.Empty;
     public string DeckId { get; set; } = string.Empty;
     public string DisplayName { get; set; } = string.Empty;
-    public List<string> CardIds { get; set; } = new();
+    public ICollection<DeckCard> DeckCards { get; set; } = new List<DeckCard>();
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? UpdatedAt { get; set; }
 }

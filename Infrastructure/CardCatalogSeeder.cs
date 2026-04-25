@@ -66,12 +66,14 @@ public static class CardCatalogSeeder
             {
                 AbilityId = "armor",
                 DisplayName = "Armor",
-                Description = "Absorbs incoming damage before health is reduced",
+                Description = "Gains persistent armor when played",
+                SkillType = (int)SkillType.Defensive,
                 TriggerKind = (int)TriggerKind.OnPlay,
                 TargetSelectorKind = (int)TargetSelectorKind.Self,
+                AnimationCueId = "skill_armor_gain",
                 Effects = new List<EffectDefinition>
                 {
-                    new EffectDefinition { EffectKind = (int)EffectKind.GainArmor, Amount = 5, Sequence = 0 }
+                    new EffectDefinition { EffectKind = (int)EffectKind.GainArmor, Amount = 3, Sequence = 0, MetadataJson = "{\"animationStep\":\"armor\"}" }
                 }
             },
             // shield - Defensive
@@ -79,12 +81,14 @@ public static class CardCatalogSeeder
             {
                 AbilityId = "shield",
                 DisplayName = "Shield",
-                Description = "Absorbs one full attack (divine shield)",
+                Description = "Negates the next damage event received",
+                SkillType = (int)SkillType.Defensive,
                 TriggerKind = (int)TriggerKind.OnPlay,
                 TargetSelectorKind = (int)TargetSelectorKind.Self,
+                AnimationCueId = "skill_shield_gain",
                 Effects = new List<EffectDefinition>
                 {
-                    new EffectDefinition { EffectKind = (int)EffectKind.GainArmor, Amount = 10, Sequence = 0 }
+                    new EffectDefinition { EffectKind = (int)EffectKind.AddShield, Amount = 1, DurationTurns = 99, Sequence = 0, MetadataJson = "{\"animationStep\":\"shield\"}" }
                 }
             },
             // fly - Modifier
@@ -92,13 +96,12 @@ public static class CardCatalogSeeder
             {
                 AbilityId = "fly",
                 DisplayName = "Fly",
-                Description = "Only flying units can attack this card",
-                TriggerKind = (int)TriggerKind.OnPlay,
+                Description = "Bypasses non-flying defenders and attacks hero directly",
+                SkillType = (int)SkillType.Modifier,
+                TriggerKind = (int)TriggerKind.OnBattlePhase,
                 TargetSelectorKind = (int)TargetSelectorKind.Self,
-                Effects = new List<EffectDefinition>
-                {
-                    new EffectDefinition { EffectKind = (int)EffectKind.BuffAttack, Amount = 1, Sequence = 0 }
-                }
+                AnimationCueId = "skill_fly_bypass",
+                MetadataJson = "{\"normalAttackModifier\":true}"
             },
             // trample - Modifier
             new AbilityDefinition
@@ -106,24 +109,26 @@ public static class CardCatalogSeeder
                 AbilityId = "trample",
                 DisplayName = "Trample",
                 Description = "Ignores armor when attacking",
+                SkillType = (int)SkillType.Modifier,
                 TriggerKind = (int)TriggerKind.OnBattlePhase,
-                TargetSelectorKind = (int)TargetSelectorKind.AllEnemies,
-                Effects = new List<EffectDefinition>
-                {
-                    new EffectDefinition { EffectKind = (int)EffectKind.Damage, Amount = 2, Sequence = 0 }
-                }
+                TargetSelectorKind = (int)TargetSelectorKind.Self,
+                AnimationCueId = "skill_trample_hit",
+                MetadataJson = "{\"normalAttackModifier\":true}"
             },
             // poison - Offensive
             new AbilityDefinition
             {
                 AbilityId = "poison",
                 DisplayName = "Poison",
-                Description = "Applies poison stacks: X damage per turn",
+                Description = "Applies poison to damaged enemies",
+                SkillType = (int)SkillType.Offensive,
                 TriggerKind = (int)TriggerKind.OnBattlePhase,
-                TargetSelectorKind = (int)TargetSelectorKind.LowestHealthAlly,
+                TargetSelectorKind = (int)TargetSelectorKind.Self,
+                AnimationCueId = "skill_poison_apply",
+                MetadataJson = "{\"normalAttackModifier\":true}",
                 Effects = new List<EffectDefinition>
                 {
-                    new EffectDefinition { EffectKind = (int)EffectKind.Damage, Amount = 1, Sequence = 0 }
+                    new EffectDefinition { EffectKind = (int)EffectKind.ApplyPoison, Amount = 1, DurationTurns = 2, Sequence = 0, MetadataJson = "{\"animationStep\":\"poison\"}" }
                 }
             },
             // stun - Offensive
@@ -131,12 +136,15 @@ public static class CardCatalogSeeder
             {
                 AbilityId = "stun",
                 DisplayName = "Stun",
-                Description = "Target skips next attack",
-                TriggerKind = (int)TriggerKind.OnPlay,
-                TargetSelectorKind = (int)TargetSelectorKind.LowestHealthAlly,
+                Description = "The next damaged enemy skips its next attack; consumed after use",
+                SkillType = (int)SkillType.Offensive,
+                TriggerKind = (int)TriggerKind.OnBattlePhase,
+                TargetSelectorKind = (int)TargetSelectorKind.Self,
+                AnimationCueId = "skill_stun_apply",
+                MetadataJson = "{\"oneShotPerCard\":true}",
                 Effects = new List<EffectDefinition>
                 {
-                    new EffectDefinition { EffectKind = (int)EffectKind.Damage, Amount = 3, Sequence = 0 }
+                    new EffectDefinition { EffectKind = (int)EffectKind.ApplyStun, Amount = 0, DurationTurns = 1, Sequence = 0, MetadataJson = "{\"animationStep\":\"stun\"}" }
                 }
             },
             // leech - Offensive
@@ -144,38 +152,39 @@ public static class CardCatalogSeeder
             {
                 AbilityId = "leech",
                 DisplayName = "Leech",
-                Description = "Heals hero equal to damage dealt",
+                Description = "Heals the attacker for health damage dealt to cards",
+                SkillType = (int)SkillType.Offensive,
                 TriggerKind = (int)TriggerKind.OnBattlePhase,
                 TargetSelectorKind = (int)TargetSelectorKind.Self,
-                Effects = new List<EffectDefinition>
-                {
-                    new EffectDefinition { EffectKind = (int)EffectKind.Heal, Amount = 2, Sequence = 0 }
-                }
+                AnimationCueId = "skill_leech_heal",
+                MetadataJson = "{\"normalAttackModifier\":true}"
             },
             // enrage - Offensive
             new AbilityDefinition
             {
                 AbilityId = "enrage",
                 DisplayName = "Enrage",
-                Description = "Gains +1 ATK when damaged",
-                TriggerKind = (int)TriggerKind.OnTurnStart,
+                Description = "Attacks twice, then skips its next attack opportunity",
+                SkillType = (int)SkillType.Offensive,
+                TriggerKind = (int)TriggerKind.OnBattlePhase,
                 TargetSelectorKind = (int)TargetSelectorKind.Self,
-                Effects = new List<EffectDefinition>
-                {
-                    new EffectDefinition { EffectKind = (int)EffectKind.BuffAttack, Amount = 2, Sequence = 0 }
-                }
+                AnimationCueId = "skill_enrage_double",
+                MetadataJson = "{\"normalAttackModifier\":true}"
             },
             // regenerate - Utility
             new AbilityDefinition
             {
-                AbilityId = "regenerate",
-                DisplayName = "Regenerate",
-                Description = "Heals X HP at end of turn",
+                AbilityId = "regenerate_left",
+                DisplayName = "Regenerate Left",
+                Description = "Heals the ally left slot at end of turn",
+                SkillType = (int)SkillType.Utility,
                 TriggerKind = (int)TriggerKind.OnTurnEnd,
-                TargetSelectorKind = (int)TargetSelectorKind.Self,
+                TargetSelectorKind = (int)TargetSelectorKind.AllyBackLeft,
+                AnimationCueId = "skill_regenerate_left",
+                MetadataJson = "{\"regenTarget\":\"left\"}",
                 Effects = new List<EffectDefinition>
                 {
-                    new EffectDefinition { EffectKind = (int)EffectKind.Heal, Amount = 1, Sequence = 0 }
+                    new EffectDefinition { EffectKind = (int)EffectKind.Heal, Amount = 2, TargetSelectorKindOverride = (int)TargetSelectorKind.AllyBackLeft, Sequence = 0, MetadataJson = "{\"animationStep\":\"regen-left\"}" }
                 }
             },
             // taunt - Utility
@@ -184,11 +193,25 @@ public static class CardCatalogSeeder
                 AbilityId = "taunt",
                 DisplayName = "Taunt",
                 Description = "All enemy attacks must target this card if alive",
-                TriggerKind = (int)TriggerKind.OnPlay,
+                SkillType = (int)SkillType.Utility,
+                TriggerKind = (int)TriggerKind.OnBattlePhase,
                 TargetSelectorKind = (int)TargetSelectorKind.Self,
+                AnimationCueId = "skill_taunt_pulse",
+                MetadataJson = "{\"targetingModifier\":true}"
+            },
+            new AbilityDefinition
+            {
+                AbilityId = "haste",
+                DisplayName = "Haste",
+                Description = "Can attack on the turn it is played",
+                SkillType = (int)SkillType.Modifier,
+                TriggerKind = (int)TriggerKind.OnBattlePhase,
+                TargetSelectorKind = (int)TargetSelectorKind.Self,
+                AnimationCueId = "skill_haste_ready",
+                MetadataJson = "{\"normalAttackModifier\":true}",
                 Effects = new List<EffectDefinition>
                 {
-                    new EffectDefinition { EffectKind = (int)EffectKind.BuffAttack, Amount = 1, Sequence = 0 }
+                    new EffectDefinition { EffectKind = (int)EffectKind.Haste, Amount = 1, Sequence = 0, MetadataJson = "{\"animationStep\":\"haste-ready\"}" }
                 }
             }
         };
@@ -218,10 +241,10 @@ public static class CardCatalogSeeder
                 CardType = (int)(type == "Unit" ? 0 : type == "Spell" ? 1 : 2),
                 CardRarity = (int)Enum.Parse(typeof(CardRarity), rarity),
                 CardFaction = (int)Enum.Parse(typeof(CardFaction), faction),
-                UnitType = type == "Unit" ? (int)UnitType.Melee : null,
+                UnitType = type == "Unit" ? random.Next(0, 3) : null,
                 AllowedRow = random.Next(0, 3),
-                DefaultAttackSelector = random.Next(0, 5),
-                TurnsUntilCanAttack = random.Next(0, 2),
+                DefaultAttackSelector = (int)TargetSelectorKind.FrontlineFirst,
+                TurnsUntilCanAttack = 1,
                 IsLimited = random.Next(100) > 90
             };
             cards.Add(card);
@@ -281,15 +304,18 @@ public static class CardCatalogSeeder
             {
                 UserId = user.Id,
                 DeckId = $"deck_{user.Username.ToLower()}_{d + 1}",
-                DisplayName = $"{user.Username}'s Deck {d + 1}",
-                CardIds = new List<string>()
+                DisplayName = $"{user.Username}'s Deck {d + 1}"
             };
 
             // Add exactly 20 cards per deck (shuffled)
             var shuffled = allCards.OrderBy(x => random.Next()).ToList();
             for (int i = 0; i < Math.Min(20, shuffled.Count); i++)
             {
-                deck.CardIds.Add(shuffled[i].CardId);
+                deck.DeckCards.Add(new DeckCard
+                {
+                    CardDefinitionId = shuffled[i].Id,
+                    Position = i
+                });
             }
 
             db.Decks.Add(deck);

@@ -38,6 +38,17 @@ namespace CardDuel.ServerApi.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
+                    b.Property<string>("AnimationCueId")
+                        .IsRequired()
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("animation_cue_id");
+
+                    b.Property<string>("ConditionsJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("conditions_json");
+
                     b.Property<string>("Description")
                         .IsRequired()
                         .HasMaxLength(512)
@@ -49,6 +60,15 @@ namespace CardDuel.ServerApi.Migrations
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)")
                         .HasColumnName("display_name");
+
+                    b.Property<string>("MetadataJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("metadata_json");
+
+                    b.Property<int>("SkillType")
+                        .HasColumnType("integer")
+                        .HasColumnName("skill_type");
 
                     b.Property<int>("TargetSelectorKind")
                         .HasColumnType("integer")
@@ -277,13 +297,30 @@ namespace CardDuel.ServerApi.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
+                    b.Property<int?>("DurationTurns")
+                        .HasColumnType("integer")
+                        .HasColumnName("duration_turns");
+
                     b.Property<int>("EffectKind")
                         .HasColumnType("integer")
                         .HasColumnName("effect_kind");
 
+                    b.Property<string>("MetadataJson")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("metadata_json");
+
+                    b.Property<int?>("SecondaryAmount")
+                        .HasColumnType("integer")
+                        .HasColumnName("secondary_amount");
+
                     b.Property<int>("Sequence")
                         .HasColumnType("integer")
                         .HasColumnName("sequence");
+
+                    b.Property<int?>("TargetSelectorKindOverride")
+                        .HasColumnType("integer")
+                        .HasColumnName("target_selector_kind_override");
 
                     b.HasKey("Id");
 
@@ -620,11 +657,6 @@ namespace CardDuel.ServerApi.Migrations
                         .HasColumnType("text")
                         .HasColumnName("id");
 
-                    b.Property<string>("CardIds")
-                        .IsRequired()
-                        .HasColumnType("text")
-                        .HasColumnName("card_ids");
-
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
@@ -656,6 +688,39 @@ namespace CardDuel.ServerApi.Migrations
                         .IsUnique();
 
                     b.ToTable("decks", (string)null);
+                });
+
+            modelBuilder.Entity("CardDuel.ServerApi.Infrastructure.Models.DeckCard", b =>
+                {
+                    b.Property<string>("Id")
+                        .HasColumnType("text")
+                        .HasColumnName("id");
+
+                    b.Property<string>("CardDefinitionId")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("card_definition_id");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("DeckId")
+                        .IsRequired()
+                        .HasColumnType("text")
+                        .HasColumnName("deck_id");
+
+                    b.Property<int>("Position")
+                        .HasColumnType("integer")
+                        .HasColumnName("position");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CardDefinitionId");
+
+                    b.HasIndex("DeckId", "Position");
+
+                    b.ToTable("deck_cards", (string)null);
                 });
 
             modelBuilder.Entity("CardDuel.ServerApi.Infrastructure.Models.PlayerRating", b =>
@@ -824,6 +889,25 @@ namespace CardDuel.ServerApi.Migrations
                     b.Navigation("AbilityDefinition");
                 });
 
+            modelBuilder.Entity("CardDuel.ServerApi.Infrastructure.Models.DeckCard", b =>
+                {
+                    b.HasOne("CardDuel.ServerApi.Infrastructure.Models.CardDefinition", "CardDefinition")
+                        .WithMany()
+                        .HasForeignKey("CardDefinitionId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+
+                    b.HasOne("CardDuel.ServerApi.Infrastructure.Models.PlayerDeck", "Deck")
+                        .WithMany("DeckCards")
+                        .HasForeignKey("DeckId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("CardDefinition");
+
+                    b.Navigation("Deck");
+                });
+
             modelBuilder.Entity("CardDuel.ServerApi.Infrastructure.Models.GameRulesetSeatOverride", b =>
                 {
                     b.HasOne("CardDuel.ServerApi.Infrastructure.Models.GameRuleset", "GameRuleset")
@@ -855,6 +939,11 @@ namespace CardDuel.ServerApi.Migrations
                         .IsRequired();
 
                     b.Navigation("User");
+                });
+
+            modelBuilder.Entity("CardDuel.ServerApi.Infrastructure.Models.PlayerDeck", b =>
+                {
+                    b.Navigation("DeckCards");
                 });
 
             modelBuilder.Entity("CardDuel.ServerApi.Infrastructure.Models.AbilityDefinition", b =>

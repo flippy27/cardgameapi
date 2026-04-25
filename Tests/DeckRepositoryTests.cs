@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Xunit;
+using CardDuel.ServerApi.Infrastructure.Models;
 using CardDuel.ServerApi.Infrastructure;
 using CardDuel.ServerApi.Services;
 
@@ -17,10 +18,35 @@ public class DeckRepositoryTests
         return context;
     }
 
+    private static void SeedCard(AppDbContext db, string cardId)
+    {
+        db.Cards.Add(new CardDefinition
+        {
+            Id = $"db-{cardId}",
+            CardId = cardId,
+            DisplayName = cardId,
+            Description = "",
+            ManaCost = 1,
+            Attack = 1,
+            Health = 1,
+            Armor = 0,
+            CardType = 0,
+            CardRarity = 0,
+            CardFaction = 0,
+            UnitType = 0,
+            AllowedRow = 2,
+            DefaultAttackSelector = 1,
+            TurnsUntilCanAttack = 1
+        });
+        db.SaveChanges();
+    }
+
     [Fact]
     public void Upsert_CreatesNewDeck()
     {
         using var db = CreateDbContext();
+        SeedCard(db, "ember_vanguard");
+        SeedCard(db, "tidal_priest");
         var catalogService = new InMemoryCardCatalogService();
         var repo = new DbDeckRepository(catalogService, db);
 
@@ -37,6 +63,8 @@ public class DeckRepositoryTests
     public void GetDecks_ReturnsManyDecks()
     {
         using var db = CreateDbContext();
+        SeedCard(db, "ember_vanguard");
+        SeedCard(db, "tidal_priest");
         var catalogService = new InMemoryCardCatalogService();
         var repo = new DbDeckRepository(catalogService, db);
 

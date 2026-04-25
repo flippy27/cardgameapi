@@ -19,7 +19,10 @@ public interface IDeckRepository
 {
     void Upsert(string playerId, string deckId, string displayName, IReadOnlyList<string> cardIds);
     PlayerDeck GetDeck(string playerId, string deckId);
+    PlayerDeckDetails GetDeckDetails(string playerId, string deckId);
     IReadOnlyList<PlayerDeck> GetDecks(string playerId);
+    PlayerDeckDetails AddCard(string playerId, string deckId, string cardId, int? position = null);
+    PlayerDeckDetails RemoveCard(string playerId, string deckId, string entryId);
 }
 
 public interface IMatchService
@@ -44,6 +47,11 @@ public interface IMatchService
 }
 
 public sealed record PlayerDeck(string PlayerId, string DeckId, string DisplayName, IReadOnlyList<string> CardIds);
+public sealed record PlayerDeckCard(string EntryId, string CardId, int Position);
+public sealed record PlayerDeckDetails(string PlayerId, string DeckId, string DisplayName, IReadOnlyList<PlayerDeckCard> Cards)
+{
+    public IReadOnlyList<string> CardIds => Cards.OrderBy(card => card.Position).Select(card => card.CardId).ToArray();
+}
 
 public sealed record DispatchEnvelope(string ConnectionId, MatchSnapshot Snapshot, bool Spectator);
 
@@ -73,31 +81,31 @@ public sealed class InMemoryCardCatalogService : ICardCatalogService
 
         return new[]
         {
-            new ServerCardDefinition("ember_vanguard", "Ember Vanguard", "", 2, 3, 3, 0, 0, 0, 0, null, AllowedRow.FrontOnly, TargetSelectorKind.FrontlineFirst, 1, Array.Empty<ServerAbilityDefinition>()),
-            new ServerCardDefinition("ember_archer", "Ember Archer", "", 2, 2, 2, 0, 0, 0, 0, null, AllowedRow.BackOnly, TargetSelectorKind.BacklineFirst, 1, Array.Empty<ServerAbilityDefinition>()),
-            new ServerCardDefinition("ember_burnseer", "Burnseer", "", 3, 2, 3, 0, 0, 0, 0, null, AllowedRow.BackOnly, TargetSelectorKind.BacklineFirst, 1,
+            new ServerCardDefinition("ember_vanguard", "Ember Vanguard", "", 2, 3, 3, 0, 0, 0, 0, (int)UnitType.Melee, AllowedRow.FrontOnly, TargetSelectorKind.FrontlineFirst, 1, Array.Empty<ServerAbilityDefinition>()),
+            new ServerCardDefinition("ember_archer", "Ember Archer", "", 2, 2, 2, 0, 0, 0, 0, (int)UnitType.Ranged, AllowedRow.BackOnly, TargetSelectorKind.BacklineFirst, 1, Array.Empty<ServerAbilityDefinition>()),
+            new ServerCardDefinition("ember_burnseer", "Burnseer", "", 3, 2, 3, 0, 0, 0, 0, (int)UnitType.Magic, AllowedRow.BackOnly, TargetSelectorKind.BacklineFirst, 1,
                 new[] { ability("hero_ping", "Hero Ping", TriggerKind.OnTurnEnd, TargetSelectorKind.Self, new ServerEffectDefinition(EffectKind.HitHero, 2)) }),
-            new ServerCardDefinition("tidal_priest", "Tidal Priest", "", 2, 1, 3, 0, 0, 0, 0, null, AllowedRow.BackOnly, TargetSelectorKind.BacklineFirst, 1,
+            new ServerCardDefinition("tidal_priest", "Tidal Priest", "", 2, 1, 3, 0, 0, 0, 0, (int)UnitType.Magic, AllowedRow.BackOnly, TargetSelectorKind.BacklineFirst, 1,
                 new[] { ability("battle_heal", "Battle Heal", TriggerKind.OnTurnEnd, TargetSelectorKind.LowestHealthAlly, new ServerEffectDefinition(EffectKind.Heal, 2)) }),
-            new ServerCardDefinition("tidal_lancer", "Tidal Lancer", "", 2, 3, 2, 0, 0, 0, 0, null, AllowedRow.FrontOnly, TargetSelectorKind.FrontlineFirst, 1, Array.Empty<ServerAbilityDefinition>()),
-            new ServerCardDefinition("tidal_sniper", "Tidal Sniper", "", 3, 3, 2, 0, 0, 0, 0, null, AllowedRow.BackOnly, TargetSelectorKind.BacklineFirst, 1, Array.Empty<ServerAbilityDefinition>()),
-            new ServerCardDefinition("grove_guardian", "Grove Guardian", "", 3, 2, 5, 1, 0, 0, 0, null, AllowedRow.FrontOnly, TargetSelectorKind.FrontlineFirst, 1, Array.Empty<ServerAbilityDefinition>()),
-            new ServerCardDefinition("grove_shaper", "Grove Shaper", "", 3, 1, 4, 0, 0, 0, 0, null, AllowedRow.BackOnly, TargetSelectorKind.BacklineFirst, 1,
+            new ServerCardDefinition("tidal_lancer", "Tidal Lancer", "", 2, 3, 2, 0, 0, 0, 0, (int)UnitType.Melee, AllowedRow.FrontOnly, TargetSelectorKind.FrontlineFirst, 1, Array.Empty<ServerAbilityDefinition>()),
+            new ServerCardDefinition("tidal_sniper", "Tidal Sniper", "", 3, 3, 2, 0, 0, 0, 0, (int)UnitType.Ranged, AllowedRow.BackOnly, TargetSelectorKind.BacklineFirst, 1, Array.Empty<ServerAbilityDefinition>()),
+            new ServerCardDefinition("grove_guardian", "Grove Guardian", "", 3, 2, 5, 1, 0, 0, 0, (int)UnitType.Melee, AllowedRow.FrontOnly, TargetSelectorKind.FrontlineFirst, 1, Array.Empty<ServerAbilityDefinition>()),
+            new ServerCardDefinition("grove_shaper", "Grove Shaper", "", 3, 1, 4, 0, 0, 0, 0, (int)UnitType.Magic, AllowedRow.BackOnly, TargetSelectorKind.BacklineFirst, 1,
                 new[] { ability("battle_buff", "Battle Buff", TriggerKind.OnTurnStart, TargetSelectorKind.Self, new ServerEffectDefinition(EffectKind.BuffAttack, 1)) }),
-            new ServerCardDefinition("grove_raincaller", "Raincaller", "", 2, 1, 3, 0, 0, 0, 0, null, AllowedRow.BackOnly, TargetSelectorKind.BacklineFirst, 1,
+            new ServerCardDefinition("grove_raincaller", "Raincaller", "", 2, 1, 3, 0, 0, 0, 0, (int)UnitType.Magic, AllowedRow.BackOnly, TargetSelectorKind.BacklineFirst, 1,
                 new[] { ability("ally_heal", "Ally Heal", TriggerKind.OnTurnEnd, TargetSelectorKind.LowestHealthAlly, new ServerEffectDefinition(EffectKind.Heal, 2)) }),
-            new ServerCardDefinition("alloy_bulwark", "Alloy Bulwark", "", 3, 2, 4, 0, 0, 0, 0, null, AllowedRow.FrontOnly, TargetSelectorKind.FrontlineFirst, 1,
+            new ServerCardDefinition("alloy_bulwark", "Alloy Bulwark", "", 3, 2, 4, 0, 0, 0, 0, (int)UnitType.Melee, AllowedRow.FrontOnly, TargetSelectorKind.FrontlineFirst, 1,
                 new[] { ability("armor_on_play", "Armor On Play", TriggerKind.OnPlay, TargetSelectorKind.Self, new ServerEffectDefinition(EffectKind.GainArmor, 2)) }),
-            new ServerCardDefinition("alloy_ballista", "Alloy Ballista", "", 4, 4, 2, 0, 0, 0, 0, null, AllowedRow.BackOnly, TargetSelectorKind.BacklineFirst, 1, Array.Empty<ServerAbilityDefinition>()),
-            new ServerCardDefinition("alloy_hoplite", "Alloy Hoplite", "", 2, 2, 3, 0, 0, 0, 0, null, AllowedRow.FrontOnly, TargetSelectorKind.FrontlineFirst, 1, Array.Empty<ServerAbilityDefinition>()),
-            new ServerCardDefinition("void_stalker", "Void Stalker", "", 2, 3, 2, 0, 0, 0, 0, null, AllowedRow.FrontOnly, TargetSelectorKind.FrontlineFirst, 1, Array.Empty<ServerAbilityDefinition>()),
-            new ServerCardDefinition("void_caller", "Void Caller", "", 4, 2, 3, 0, 0, 0, 0, null, AllowedRow.BackOnly, TargetSelectorKind.FrontlineFirst, 1,
+            new ServerCardDefinition("alloy_ballista", "Alloy Ballista", "", 4, 4, 2, 0, 0, 0, 0, (int)UnitType.Ranged, AllowedRow.BackOnly, TargetSelectorKind.BacklineFirst, 1, Array.Empty<ServerAbilityDefinition>()),
+            new ServerCardDefinition("alloy_hoplite", "Alloy Hoplite", "", 2, 2, 3, 0, 0, 0, 0, (int)UnitType.Melee, AllowedRow.FrontOnly, TargetSelectorKind.FrontlineFirst, 1, Array.Empty<ServerAbilityDefinition>()),
+            new ServerCardDefinition("void_stalker", "Void Stalker", "", 2, 3, 2, 0, 0, 0, 0, (int)UnitType.Melee, AllowedRow.FrontOnly, TargetSelectorKind.FrontlineFirst, 1, Array.Empty<ServerAbilityDefinition>()),
+            new ServerCardDefinition("void_caller", "Void Caller", "", 4, 2, 3, 0, 0, 0, 0, (int)UnitType.Magic, AllowedRow.BackOnly, TargetSelectorKind.FrontlineFirst, 1,
                 new[] { ability("splash", "Splash", TriggerKind.OnBattlePhase, TargetSelectorKind.AllEnemies, new ServerEffectDefinition(EffectKind.Damage, 1)) }),
-            new ServerCardDefinition("void_magus", "Void Magus", "", 4, 3, 4, 0, 0, 0, 0, null, AllowedRow.BackOnly, TargetSelectorKind.FrontlineFirst, 1,
+            new ServerCardDefinition("void_magus", "Void Magus", "", 4, 3, 4, 0, 0, 0, 0, (int)UnitType.Magic, AllowedRow.BackOnly, TargetSelectorKind.FrontlineFirst, 1,
                 new[] { ability("self_buff", "Self Buff", TriggerKind.OnTurnStart, TargetSelectorKind.Self, new ServerEffectDefinition(EffectKind.BuffAttack, 1)) }),
-            new ServerCardDefinition("ember_colossus", "Ember Colossus", "", 5, 5, 6, 0, 0, 0, 0, null, AllowedRow.FrontOnly, TargetSelectorKind.FrontlineFirst, 1, Array.Empty<ServerAbilityDefinition>()),
-            new ServerCardDefinition("tidal_waveblade", "Waveblade", "", 1, 2, 1, 0, 0, 0, 0, null, AllowedRow.BackOnly, TargetSelectorKind.BacklineFirst, 1, Array.Empty<ServerAbilityDefinition>()),
-            new ServerCardDefinition("grove_myr", "Grove Myr", "", 1, 1, 2, 0, 0, 0, 0, null, AllowedRow.FrontOnly, TargetSelectorKind.FrontlineFirst, 1, Array.Empty<ServerAbilityDefinition>())
+            new ServerCardDefinition("ember_colossus", "Ember Colossus", "", 5, 5, 6, 0, 0, 0, 0, (int)UnitType.Melee, AllowedRow.FrontOnly, TargetSelectorKind.FrontlineFirst, 1, Array.Empty<ServerAbilityDefinition>()),
+            new ServerCardDefinition("tidal_waveblade", "Waveblade", "", 1, 2, 1, 0, 0, 0, 0, (int)UnitType.Ranged, AllowedRow.BackOnly, TargetSelectorKind.BacklineFirst, 1, Array.Empty<ServerAbilityDefinition>()),
+            new ServerCardDefinition("grove_myr", "Grove Myr", "", 1, 1, 2, 0, 0, 0, 0, (int)UnitType.Melee, AllowedRow.FrontOnly, TargetSelectorKind.FrontlineFirst, 1, Array.Empty<ServerAbilityDefinition>())
         }.ToDictionary(card => card.CardId, card => card, StringComparer.OrdinalIgnoreCase);
     }
 }
@@ -123,6 +131,16 @@ public sealed class InMemoryDeckRepository(ICardCatalogService catalogService) :
         throw new InvalidOperationException("Deck not found.");
     }
 
+    public PlayerDeckDetails GetDeckDetails(string playerId, string deckId)
+    {
+        var deck = GetDeck(playerId, deckId);
+        return new PlayerDeckDetails(
+            deck.PlayerId,
+            deck.DeckId,
+            deck.DisplayName,
+            deck.CardIds.Select((cardId, index) => new PlayerDeckCard($"{deck.DeckId}-{index}", cardId, index)).ToArray());
+    }
+
     public IReadOnlyList<PlayerDeck> GetDecks(string playerId)
     {
         if (_decks.TryGetValue(playerId, out var playerDecks))
@@ -131,6 +149,32 @@ public sealed class InMemoryDeckRepository(ICardCatalogService catalogService) :
         }
 
         return Array.Empty<PlayerDeck>();
+    }
+
+    public PlayerDeckDetails AddCard(string playerId, string deckId, string cardId, int? position = null)
+    {
+        var deck = GetDeck(playerId, deckId);
+        _ = catalogService.ResolveDeck(new[] { cardId });
+        var cards = deck.CardIds.ToList();
+        var insertAt = Math.Clamp(position ?? cards.Count, 0, cards.Count);
+        cards.Insert(insertAt, cardId);
+        Upsert(playerId, deckId, deck.DisplayName, cards);
+        return GetDeckDetails(playerId, deckId);
+    }
+
+    public PlayerDeckDetails RemoveCard(string playerId, string deckId, string entryId)
+    {
+        var deck = GetDeck(playerId, deckId);
+        var cards = deck.CardIds.ToList();
+        var suffix = entryId.Split('-').LastOrDefault();
+        if (!int.TryParse(suffix, out var index) || index < 0 || index >= cards.Count)
+        {
+            throw new InvalidOperationException("Deck card entry not found.");
+        }
+
+        cards.RemoveAt(index);
+        Upsert(playerId, deckId, deck.DisplayName, cards);
+        return GetDeckDetails(playerId, deckId);
     }
 }
 

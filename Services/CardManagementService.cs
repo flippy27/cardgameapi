@@ -11,6 +11,10 @@ public interface ICardManagementService
     Task<CardDefinitionDto> CreateCardAsync(CreateCardRequest request);
     Task<CardDefinitionDto> UpdateCardAsync(string cardId, UpdateCardRequest request);
     Task<bool> DeleteCardAsync(string cardId);
+    Task<BattlePresentationDto?> UpdateBattlePresentationAsync(string cardId, UpsertBattlePresentationRequest request);
+    Task<IReadOnlyList<CardVisualProfileDto>> ReplaceVisualProfilesAsync(string cardId, IReadOnlyList<UpsertCardVisualProfileRequest> request);
+    Task<IReadOnlyList<CardVisualProfileDto>> UpsertVisualProfileAsync(string cardId, string profileKey, UpsertCardVisualProfileRequest request);
+    Task<bool> DeleteVisualProfileAsync(string cardId, string profileKey);
     Task<AbilityDto> AddAbilityAsync(string cardId, CreateAbilityRequest request);
     Task<AbilityDto> UpdateAbilityAsync(string cardId, string abilityId, UpdateAbilityRequest request);
     Task<bool> DeleteAbilityAsync(string cardId, string abilityId);
@@ -95,6 +99,96 @@ public sealed class CardManagementService(AppDbContext db) : ICardManagementServ
         return true;
     }
 
+    public async Task<BattlePresentationDto?> UpdateBattlePresentationAsync(string cardId, UpsertBattlePresentationRequest request)
+    {
+        var card = await db.Cards.FirstOrDefaultAsync(c => c.CardId == cardId)
+            ?? throw new KeyNotFoundException($"Card '{cardId}' not found");
+
+        card.BattlePresentationJson = SerializeBattlePresentation(request);
+        card.UpdatedAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync();
+
+        return DeserializeBattlePresentation(card.BattlePresentationJson);
+    }
+
+    public async Task<IReadOnlyList<CardVisualProfileDto>> ReplaceVisualProfilesAsync(string cardId, IReadOnlyList<UpsertCardVisualProfileRequest> request)
+    {
+        var card = await db.Cards.FirstOrDefaultAsync(c => c.CardId == cardId)
+            ?? throw new KeyNotFoundException($"Card '{cardId}' not found");
+
+        card.VisualProfilesJson = SerializeVisualProfiles(request);
+        card.UpdatedAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync();
+
+        return DeserializeVisualProfiles(card.VisualProfilesJson);
+    }
+
+    public async Task<IReadOnlyList<CardVisualProfileDto>> UpsertVisualProfileAsync(string cardId, string profileKey, UpsertCardVisualProfileRequest request)
+    {
+        var card = await db.Cards.FirstOrDefaultAsync(c => c.CardId == cardId)
+            ?? throw new KeyNotFoundException($"Card '{cardId}' not found");
+
+        var normalizedProfileKey = string.IsNullOrWhiteSpace(profileKey)
+            ? request.ProfileKey
+            : profileKey;
+
+        var profile = new UpsertCardVisualProfileRequest(
+            normalizedProfileKey,
+            request.DisplayName,
+            request.IsDefault,
+            request.Layers);
+
+        var profiles = DeserializeVisualProfiles(card.VisualProfilesJson).ToList();
+        var replacement = ToVisualProfileDto(profile);
+        var existingIndex = profiles.FindIndex(existing => string.Equals(existing.ProfileKey, normalizedProfileKey, StringComparison.OrdinalIgnoreCase));
+
+        if (profile.IsDefault)
+        {
+            profiles = profiles
+                .Select(existing => existing with { IsDefault = false })
+                .ToList();
+        }
+
+        if (existingIndex >= 0)
+        {
+            profiles[existingIndex] = replacement;
+        }
+        else
+        {
+            profiles.Add(replacement);
+        }
+
+        card.VisualProfilesJson = JsonSerializer.Serialize(profiles);
+        card.UpdatedAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync();
+
+        return DeserializeVisualProfiles(card.VisualProfilesJson);
+    }
+
+    public async Task<bool> DeleteVisualProfileAsync(string cardId, string profileKey)
+    {
+        var card = await db.Cards.FirstOrDefaultAsync(c => c.CardId == cardId)
+            ?? throw new KeyNotFoundException($"Card '{cardId}' not found");
+
+        var profiles = DeserializeVisualProfiles(card.VisualProfilesJson).ToList();
+        var removed = profiles.RemoveAll(profile => string.Equals(profile.ProfileKey, profileKey, StringComparison.OrdinalIgnoreCase));
+        if (removed == 0)
+        {
+            return false;
+        }
+
+        if (profiles.Count > 0 && profiles.All(profile => !profile.IsDefault))
+        {
+            profiles[0] = profiles[0] with { IsDefault = true };
+        }
+
+        card.VisualProfilesJson = JsonSerializer.Serialize(profiles);
+        card.UpdatedAt = DateTimeOffset.UtcNow;
+        await db.SaveChangesAsync();
+
+        return true;
+    }
+
     public async Task<AbilityDto> AddAbilityAsync(string cardId, CreateAbilityRequest request)
     {
         var card = await db.Cards.Include(c => c.CardAbilities)
@@ -107,8 +201,18 @@ public sealed class CardManagementService(AppDbContext db) : ICardManagementServ
             AbilityId = request.AbilityId,
             DisplayName = request.DisplayName,
             Description = request.Description,
+            SkillType = request.SkillType,
             TriggerKind = request.TriggerKind,
-            TargetSelectorKind = request.TargetSelectorKind
+            TargetSelectorKind = request.TargetSelectorKind,
+            AnimationCueId = request.AnimationCueId ?? string.Empty,
+            IconAssetRef = request.IconAssetRef,
+            StatusIconAssetRef = request.StatusIconAssetRef,
+            VfxCueId = request.VfxCueId,
+            AudioCueId = request.AudioCueId,
+            UiColorHex = request.UiColorHex,
+            TooltipSummary = request.TooltipSummary,
+            ConditionsJson = string.IsNullOrWhiteSpace(request.ConditionsJson) ? "{}" : request.ConditionsJson,
+            MetadataJson = string.IsNullOrWhiteSpace(request.MetadataJson) ? "{}" : request.MetadataJson
         };
 
         if (existingAbility == null)
@@ -121,6 +225,10 @@ public sealed class CardManagementService(AppDbContext db) : ICardManagementServ
                 {
                     EffectKind = effect.EffectKind,
                     Amount = effect.Amount,
+                    SecondaryAmount = effect.SecondaryAmount,
+                    DurationTurns = effect.DurationTurns,
+                    TargetSelectorKindOverride = effect.TargetSelectorKindOverride,
+                    MetadataJson = string.IsNullOrWhiteSpace(effect.MetadataJson) ? "{}" : effect.MetadataJson,
                     Sequence = i
                 });
             }
@@ -150,8 +258,18 @@ public sealed class CardManagementService(AppDbContext db) : ICardManagementServ
         var ability = cardAbility.AbilityDefinition;
         if (request.DisplayName != null) ability.DisplayName = request.DisplayName;
         if (request.Description != null) ability.Description = request.Description;
+        if (request.SkillType.HasValue) ability.SkillType = request.SkillType.Value;
         if (request.TriggerKind.HasValue) ability.TriggerKind = request.TriggerKind.Value;
         if (request.TargetSelectorKind.HasValue) ability.TargetSelectorKind = request.TargetSelectorKind.Value;
+        if (request.AnimationCueId != null) ability.AnimationCueId = request.AnimationCueId;
+        if (request.IconAssetRef != null) ability.IconAssetRef = request.IconAssetRef;
+        if (request.StatusIconAssetRef != null) ability.StatusIconAssetRef = request.StatusIconAssetRef;
+        if (request.VfxCueId != null) ability.VfxCueId = request.VfxCueId;
+        if (request.AudioCueId != null) ability.AudioCueId = request.AudioCueId;
+        if (request.UiColorHex != null) ability.UiColorHex = request.UiColorHex;
+        if (request.TooltipSummary != null) ability.TooltipSummary = request.TooltipSummary;
+        if (request.ConditionsJson != null) ability.ConditionsJson = string.IsNullOrWhiteSpace(request.ConditionsJson) ? "{}" : request.ConditionsJson;
+        if (request.MetadataJson != null) ability.MetadataJson = string.IsNullOrWhiteSpace(request.MetadataJson) ? "{}" : request.MetadataJson;
 
         ability.UpdatedAt = DateTimeOffset.UtcNow;
 
@@ -185,6 +303,10 @@ public sealed class CardManagementService(AppDbContext db) : ICardManagementServ
         {
             EffectKind = request.EffectKind,
             Amount = request.Amount,
+            SecondaryAmount = request.SecondaryAmount,
+            DurationTurns = request.DurationTurns,
+            TargetSelectorKindOverride = request.TargetSelectorKindOverride,
+            MetadataJson = string.IsNullOrWhiteSpace(request.MetadataJson) ? "{}" : request.MetadataJson,
             Sequence = request.Sequence,
             AbilityDefinitionId = cardAbility.AbilityDefinitionId
         };
@@ -206,7 +328,11 @@ public sealed class CardManagementService(AppDbContext db) : ICardManagementServ
 
         if (request.EffectKind.HasValue) effect.EffectKind = request.EffectKind.Value;
         if (request.Amount.HasValue) effect.Amount = request.Amount.Value;
+        if (request.SecondaryAmount.HasValue) effect.SecondaryAmount = request.SecondaryAmount.Value;
+        if (request.DurationTurns.HasValue) effect.DurationTurns = request.DurationTurns.Value;
+        if (request.TargetSelectorKindOverride.HasValue) effect.TargetSelectorKindOverride = request.TargetSelectorKindOverride.Value;
         if (request.Sequence.HasValue) effect.Sequence = request.Sequence.Value;
+        if (request.MetadataJson != null) effect.MetadataJson = string.IsNullOrWhiteSpace(request.MetadataJson) ? "{}" : request.MetadataJson;
 
         await db.SaveChangesAsync();
 
@@ -248,11 +374,13 @@ public sealed class CardManagementService(AppDbContext db) : ICardManagementServ
             card.CardAbilities.OrderBy(ca => ca.Sequence).Select(ca => MapToDto(ca.AbilityDefinition)).ToList());
 
     private static AbilityDto MapToDto(AbilityDefinition ability) =>
-        new(ability.Id, ability.AbilityId, ability.DisplayName, ability.Description, ability.TriggerKind,
-            ability.TargetSelectorKind, ability.Effects.OrderBy(e => e.Sequence).Select(MapToDto).ToList());
+        new(ability.Id, ability.AbilityId, ability.DisplayName, ability.Description, ability.SkillType, ability.TriggerKind,
+            ability.TargetSelectorKind, ability.AnimationCueId, ability.ConditionsJson, ability.MetadataJson,
+            ability.Effects.OrderBy(e => e.Sequence).Select(MapToDto).ToList());
 
     private static EffectDto MapToDto(EffectDefinition effect) =>
-        new(effect.Id, effect.EffectKind, effect.Amount, effect.Sequence);
+        new(effect.Id, effect.EffectKind, effect.Amount, effect.SecondaryAmount, effect.DurationTurns,
+            effect.TargetSelectorKindOverride, effect.Sequence, effect.MetadataJson);
 
     private static string SerializeBattlePresentation(UpsertBattlePresentationRequest? request)
     {
@@ -277,7 +405,13 @@ public sealed class CardManagementService(AppDbContext db) : ICardManagementServ
             return "[]";
         }
 
-        var profiles = request.Select(profile => new CardVisualProfileDto(
+        var profiles = request.Select(ToVisualProfileDto).ToArray();
+
+        return JsonSerializer.Serialize(profiles);
+    }
+
+    private static CardVisualProfileDto ToVisualProfileDto(UpsertCardVisualProfileRequest profile) =>
+        new(
             profile.ProfileKey,
             profile.DisplayName,
             profile.IsDefault,
@@ -287,10 +421,7 @@ public sealed class CardManagementService(AppDbContext db) : ICardManagementServ
                 layer.SourceKind,
                 layer.AssetRef,
                 layer.SortOrder,
-                layer.MetadataJson)).ToArray())).ToArray();
-
-        return JsonSerializer.Serialize(profiles);
-    }
+                layer.MetadataJson)).ToArray());
 
     private static BattlePresentationDto? DeserializeBattlePresentation(string json)
     {
