@@ -15,4 +15,6 @@ public sealed class GameActionException(string code, string message) : InvalidOp
     public static GameActionException BoardLaneFull(BoardSlot slot) => new("board_lane_full", $"Cannot place card in {slot}; there is no room to shift cards.");
     public static GameActionException FrontOnlyCardRequired() => new("invalid_row_front_only", "This card can only be played in the front row.");
     public static GameActionException BackOnlyCardRequired() => new("invalid_row_back_only", "This card can only be played in the back row.");
+    public static GameActionException RuntimeCardNotFound() => new("runtime_card_not_found", "Board card runtime id was not found.");
+    public static GameActionException CannotDestroyOpponentsCard() => new("cannot_destroy_opponents_card", "Players may only destroy their own in-play cards.");
 }

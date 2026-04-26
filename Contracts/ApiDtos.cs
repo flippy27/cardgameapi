@@ -140,6 +140,11 @@ public sealed record EndTurnRequest(
     [Required] string MatchId,
     [Required] string PlayerId);
 
+public sealed record DestroyCardRequest(
+    [Required] string MatchId,
+    [Required] string PlayerId,
+    [Required] string RuntimeCardId);
+
 public sealed record ForfeitRequest(
     [Required] string MatchId,
     [Required] string PlayerId);

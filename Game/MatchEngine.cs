@@ -544,6 +544,39 @@ public sealed class MatchEngine
         UpdatedAt = DateTimeOffset.UtcNow;
     }
 
+    public void DestroyCard(string playerId, string runtimeCardId)
+    {
+        var seat = EnsureMatchInProgress(playerId);
+        var card = FindCard(runtimeCardId) ?? throw GameActionException.RuntimeCardNotFound();
+        if (card.OwnerSeatIndex != seat.SeatIndex)
+        {
+            throw GameActionException.CannotDestroyOpponentsCard();
+        }
+
+        var hpBefore = card.CurrentHealth;
+        var armorBefore = card.Armor;
+        card.CurrentHealth = 0;
+        _logs.Add($"{card.Definition.DisplayName} was destroyed by its owner.");
+        AddBattleEvent(
+            "card_destroyed",
+            seat.SeatIndex,
+            card.RuntimeId,
+            card.OwnerSeatIndex,
+            card.RuntimeId,
+            null,
+            null,
+            0,
+            hpBefore,
+            card.CurrentHealth,
+            armorBefore,
+            card.Armor,
+            null,
+            null,
+            $"{card.Definition.DisplayName} was destroyed by its owner.");
+        CleanupDeaths();
+        UpdatedAt = DateTimeOffset.UtcNow;
+    }
+
     public void AddSpectator(string spectatorId, string connectionId)
     {
         _spectators[spectatorId] = connectionId;
@@ -713,14 +746,19 @@ public sealed class MatchEngine
         }
     }
 
-    private void EnsurePlayable(string playerId)
+    private RuntimeSeatState EnsureMatchInProgress(string playerId)
     {
         if (Phase != MatchPhase.InProgress || DuelEnded)
         {
             throw GameActionException.MatchNotPlayable();
         }
 
-        var seat = GetSeat(playerId);
+        return GetSeat(playerId);
+    }
+
+    private void EnsurePlayable(string playerId)
+    {
+        var seat = EnsureMatchInProgress(playerId);
         if (seat.SeatIndex != ActiveSeatIndex)
         {
             var activePlayerId = ActiveSeatIndex is 0 or 1 ? _seats[ActiveSeatIndex].PlayerId : "unknown";
@@ -1097,26 +1135,51 @@ public sealed class MatchEngine
         }
 
         var ignoreArmor = HasAbility(attacker, "trample");
+        var targetAttack = Math.Max(0, target.Attack);
+        var targetCounterIgnoresArmor = HasAbility(target, "trample");
         AddBattleEvent("card_attack", attacker.OwnerSeatIndex, attacker.RuntimeId, target.OwnerSeatIndex, target.RuntimeId, null, null, attacker.Attack, null, null, null, null, null, null, $"{attacker.Definition.DisplayName} attacked {target.Definition.DisplayName}.");
-        var result = DealDamage(attacker.RuntimeId, target.RuntimeId, attacker.Attack, ignoreArmor, null, null);
+        var result = DealDamage(attacker.RuntimeId, target.RuntimeId, attacker.Attack, ignoreArmor, null, null, attacker.OwnerSeatIndex);
+        ApplyCombatContactEffects(attacker, target, result);
 
-        if (result.HealthDamage > 0 && HasAbility(attacker, "leech"))
+        if (DuelEnded)
         {
-            HealCard(attacker, result.HealthDamage, capAtMaxHealth: false, "leech", EffectKind.Heal);
+            return;
         }
 
-        if (result.HealthDamage > 0 && HasAbility(attacker, "poison"))
+        if (targetAttack <= 0)
         {
-            var poisonEffect = attacker.Definition.Abilities
+            return;
+        }
+
+        AddBattleEvent("card_counterattack", target.OwnerSeatIndex, target.RuntimeId, attacker.OwnerSeatIndex, attacker.RuntimeId, null, null, targetAttack, null, null, null, null, null, null, $"{target.Definition.DisplayName} struck back at {attacker.Definition.DisplayName}.");
+        var counterResult = DealDamage(target.RuntimeId, attacker.RuntimeId, targetAttack, targetCounterIgnoresArmor, null, null, target.OwnerSeatIndex);
+        ApplyCombatContactEffects(target, attacker, counterResult);
+    }
+
+    private void ApplyCombatContactEffects(RuntimeBoardCard source, RuntimeBoardCard target, DamageResult result)
+    {
+        if (result.HealthDamage <= 0 || source.IsDead)
+        {
+            return;
+        }
+
+        if (HasAbility(source, "leech"))
+        {
+            HealCard(source, result.HealthDamage, capAtMaxHealth: false, "leech", EffectKind.Heal);
+        }
+
+        if (!target.IsDead && HasAbility(source, "poison"))
+        {
+            var poisonEffect = source.Definition.Abilities
                 .Where(ability => ability.AbilityId.Equals("poison", StringComparison.OrdinalIgnoreCase))
                 .SelectMany(ability => ability.Effects)
                 .FirstOrDefault(effect => effect.Kind == EffectKind.ApplyPoison);
-            AddOrRefreshStatus(target, StatusEffectKind.Poison, poisonEffect?.Amount ?? 1, poisonEffect?.DurationTurns ?? poisonEffect?.SecondaryAmount ?? 2, attacker.RuntimeId, "poison");
+            AddOrRefreshStatus(target, StatusEffectKind.Poison, poisonEffect?.Amount ?? 1, poisonEffect?.DurationTurns ?? poisonEffect?.SecondaryAmount ?? 2, source.RuntimeId, "poison");
         }
 
-        if (result.HealthDamage > 0 && HasAbility(attacker, "stun") && attacker.ConsumedOneShotAbilityIds.Add("stun"))
+        if (!target.IsDead && HasAbility(source, "stun") && source.ConsumedOneShotAbilityIds.Add("stun"))
         {
-            AddOrRefreshStatus(target, StatusEffectKind.Stun, 0, 1, attacker.RuntimeId, "stun");
+            AddOrRefreshStatus(target, StatusEffectKind.Stun, 0, 1, source.RuntimeId, "stun");
         }
     }
 
@@ -1224,7 +1287,7 @@ public sealed class MatchEngine
         AddBattleEvent("heal", target.OwnerSeatIndex, target.RuntimeId, target.OwnerSeatIndex, target.RuntimeId, abilityId, effectKind, target.CurrentHealth - before, before, target.CurrentHealth, target.Armor, target.Armor, null, null, $"{target.Definition.DisplayName} healed {target.CurrentHealth - before}.");
     }
 
-    private DamageResult DealDamage(string sourceRuntimeId, string targetRuntimeId, int amount, bool ignoreArmor, string? abilityId, EffectKind? effectKind)
+    private DamageResult DealDamage(string sourceRuntimeId, string targetRuntimeId, int amount, bool ignoreArmor, string? abilityId, EffectKind? effectKind, int? sourceSeatIndexOverride = null)
     {
         var target = FindCard(targetRuntimeId);
         if (target == null || amount <= 0)
@@ -1243,7 +1306,7 @@ public sealed class MatchEngine
                 target.StatusEffects.Remove(shield);
             }
 
-            AddBattleEvent("shield_block", FindOwnerSeatIndex(sourceRuntimeId), sourceRuntimeId, target.OwnerSeatIndex, target.RuntimeId, shield.AbilityId ?? abilityId, effectKind, amount, hpBefore, target.CurrentHealth, armorBefore, target.Armor, StatusEffectKind.Shield, shield.RemainingTurns, $"{target.Definition.DisplayName} shield blocked {amount} damage.");
+            AddBattleEvent("shield_block", sourceSeatIndexOverride ?? FindOwnerSeatIndex(sourceRuntimeId), sourceRuntimeId, target.OwnerSeatIndex, target.RuntimeId, shield.AbilityId ?? abilityId, effectKind, amount, hpBefore, target.CurrentHealth, armorBefore, target.Armor, StatusEffectKind.Shield, shield.RemainingTurns, $"{target.Definition.DisplayName} shield blocked {amount} damage.");
             return new DamageResult(0, 0);
         }
 
@@ -1265,7 +1328,7 @@ public sealed class MatchEngine
         }
 
         _logs.Add($"{sourceRuntimeId} hit {target.Definition.DisplayName} for {amount}.");
-        AddBattleEvent("card_damage", FindOwnerSeatIndex(sourceRuntimeId), sourceRuntimeId, target.OwnerSeatIndex, target.RuntimeId, abilityId, effectKind, amount, hpBefore, target.CurrentHealth, armorBefore, target.Armor, null, null, $"{target.Definition.DisplayName} took {amount} damage.");
+        AddBattleEvent("card_damage", sourceSeatIndexOverride ?? FindOwnerSeatIndex(sourceRuntimeId), sourceRuntimeId, target.OwnerSeatIndex, target.RuntimeId, abilityId, effectKind, amount, hpBefore, target.CurrentHealth, armorBefore, target.Armor, null, null, $"{target.Definition.DisplayName} took {amount} damage.");
         CleanupDeaths();
         return new DamageResult(healthDamage, armorDamage);
     }

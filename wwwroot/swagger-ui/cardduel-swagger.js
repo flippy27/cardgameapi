@@ -1,6 +1,7 @@
 (function () {
   const storageKey = "cardduel.swagger.profiles.v1";
   const activeKey = "cardduel.swagger.activeProfile";
+  const variableKeys = ["playerId", "deckId", "matchId", "roomCode", "reconnectToken", "rulesetId", "opponentId", "cardId", "abilityId", "profileKey", "deckEntryId", "itemTypeKey", "playerCardId", "upgradeId", "requirementId", "runtimeCardId"];
   const defaultProfiles = [
     {
       name: "Player One",
@@ -17,7 +18,12 @@
       cardId: "card_001",
       abilityId: "poison",
       profileKey: "hand-default",
-      deckEntryId: ""
+      deckEntryId: "",
+      itemTypeKey: "card_dust",
+      playerCardId: "",
+      upgradeId: "",
+      requirementId: "",
+      runtimeCardId: ""
     },
     {
       name: "Player Two",
@@ -34,7 +40,12 @@
       cardId: "card_001",
       abilityId: "poison",
       profileKey: "hand-default",
-      deckEntryId: ""
+      deckEntryId: "",
+      itemTypeKey: "card_dust",
+      playerCardId: "",
+      upgradeId: "",
+      requirementId: "",
+      runtimeCardId: ""
     }
   ];
 
@@ -94,7 +105,12 @@
       cardId: form.querySelector("[data-field='cardId']").value.trim(),
       abilityId: form.querySelector("[data-field='abilityId']").value.trim(),
       profileKey: form.querySelector("[data-field='profileKey']").value.trim(),
-      deckEntryId: form.querySelector("[data-field='deckEntryId']").value.trim()
+      deckEntryId: form.querySelector("[data-field='deckEntryId']").value.trim(),
+      itemTypeKey: form.querySelector("[data-field='itemTypeKey']").value.trim(),
+      playerCardId: form.querySelector("[data-field='playerCardId']").value.trim(),
+      upgradeId: form.querySelector("[data-field='upgradeId']").value.trim(),
+      requirementId: form.querySelector("[data-field='requirementId']").value.trim(),
+      runtimeCardId: form.querySelector("[data-field='runtimeCardId']").value.trim()
     };
   }
 
@@ -140,17 +156,7 @@
 
   function copyVariables(profile) {
     const text = [
-      `playerId=${profile.playerId || ""}`,
-      `deckId=${profile.deckId || ""}`,
-      `matchId=${profile.matchId || ""}`,
-      `roomCode=${profile.roomCode || ""}`,
-      `reconnectToken=${profile.reconnectToken || ""}`,
-      `rulesetId=${profile.rulesetId || ""}`,
-      `opponentId=${profile.opponentId || ""}`,
-      `cardId=${profile.cardId || ""}`,
-      `abilityId=${profile.abilityId || ""}`,
-      `profileKey=${profile.profileKey || ""}`,
-      `deckEntryId=${profile.deckEntryId || ""}`,
+      ...variableKeys.map(key => `${key}=${profile[key] || ""}`),
       `Authorization=Bearer ${profile.token || ""}`
     ].join("\n");
 
@@ -175,6 +181,10 @@
   }
 
   function fillSelect(select, items, valueSelector, labelSelector, emptyLabel) {
+    if (!select) {
+      return;
+    }
+
     select.innerHTML = "";
     const empty = document.createElement("option");
     empty.value = "";
@@ -189,40 +199,60 @@
     }
   }
 
+  async function safeFill(root, pickerName, path, valueSelector, labelSelector, emptyLabel, authorized) {
+    const select = root.querySelector(`[data-picker='${pickerName}']`);
+    if (!select) {
+      return;
+    }
+
+    try {
+      const items = await getJson(path, authorized);
+      fillSelect(select, items, valueSelector, labelSelector, emptyLabel);
+    } catch {
+      fillSelect(select, [], () => "", () => "", `${emptyLabel} (sin datos)`);
+    }
+  }
+
   async function refreshPickers(root) {
-    const cards = await getJson("/api/v1/cards", false);
-    fillSelect(
-      root.querySelector("[data-picker='cardId']"),
-      cards,
+    await safeFill(
+      root,
+      "cardId",
+      "/api/v1/cards",
       card => card.cardId || card.CardId,
       card => `${card.cardId || card.CardId} - ${card.displayName || card.DisplayName}`,
-      "Selecciona una carta desde DB");
+      "Selecciona una carta desde DB",
+      false);
 
-    const lookups = await getJson("/api/v1/authoring/lookups", false);
-    fillSelect(
-      root.querySelector("[data-picker='abilityId']"),
-      await getJson("/api/v1/abilities", false),
+    await safeFill(
+      root,
+      "abilityId",
+      "/api/v1/abilities",
       ability => ability.abilityId || ability.AbilityId,
       ability => `${ability.abilityId || ability.AbilityId} - ${ability.displayName || ability.DisplayName}`,
-      "Selecciona una ability desde DB");
-    fillSelect(
-      root.querySelector("[data-picker='profileKey']"),
-      await getJson("/api/v1/authoring/card-visual-profile-templates", false),
+      "Selecciona una ability desde DB",
+      false);
+
+    await safeFill(
+      root,
+      "profileKey",
+      "/api/v1/authoring/card-visual-profile-templates",
       profile => profile.profileKey || profile.ProfileKey,
       profile => `${profile.profileKey || profile.ProfileKey} - ${profile.displayName || profile.DisplayName}`,
-      "Selecciona un visual profile template");
-    fillSelect(
-      root.querySelector("[data-picker='effectKind']"),
-      lookups.effectKinds || lookups.EffectKinds || [],
-      effect => effect.id ?? effect.Id,
-      effect => `${effect.id ?? effect.Id}: ${effect.key || effect.Key} - ${effect.displayName || effect.DisplayName}`,
-      "Referencia effect kind");
-    fillSelect(
-      root.querySelector("[data-picker='targetSelector']"),
-      lookups.targetSelectors || lookups.TargetSelectors || [],
-      selector => selector.id ?? selector.Id,
-      selector => `${selector.id ?? selector.Id}: ${selector.key || selector.Key}`,
-      "Referencia target selector");
+      "Selecciona un visual profile template",
+      false);
+
+    await safeFill(
+      root,
+      "itemTypeKey",
+      "/api/v1/items",
+      item => item.key || item.Key,
+      item => `${item.key || item.Key} - ${item.displayName || item.DisplayName}`,
+      "Selecciona un item type",
+      false);
+
+    const lookups = await getJson("/api/v1/authoring/lookups", false);
+    fillSelect(root.querySelector("[data-picker='effectKind']"), lookups.effectKinds || lookups.EffectKinds || [], effect => effect.id ?? effect.Id, effect => `${effect.id ?? effect.Id}: ${effect.key || effect.Key} - ${effect.displayName || effect.DisplayName}`, "Referencia effect kind");
+    fillSelect(root.querySelector("[data-picker='targetSelector']"), lookups.targetSelectors || lookups.TargetSelectors || [], selector => selector.id ?? selector.Id, selector => `${selector.id ?? selector.Id}: ${selector.key || selector.Key}`, "Referencia target selector");
 
     const active = readProfile(root);
     if (active.playerId && active.deckId && active.token) {
@@ -233,6 +263,77 @@
         entry => entry.entryId || entry.EntryId,
         entry => `${entry.position ?? entry.Position}: ${entry.cardId || entry.CardId}`,
         "Selecciona entrada del deck");
+
+      await safeFill(
+        root,
+        "playerCardId",
+        `/api/v1/players/${encodeURIComponent(active.playerId)}/cards`,
+        playerCard => playerCard.id || playerCard.Id,
+        playerCard => `${playerCard.id || playerCard.Id} - ${playerCard.cardId || playerCard.CardId} - ${playerCard.displayName || playerCard.DisplayName}`,
+        "Selecciona una carta owned",
+        true);
+    } else {
+      fillSelect(root.querySelector("[data-picker='deckEntryId']"), [], () => "", () => "", "Selecciona entrada del deck");
+      fillSelect(root.querySelector("[data-picker='playerCardId']"), [], () => "", () => "", "Selecciona una carta owned");
+    }
+
+    if (active.playerId && active.playerCardId && active.token) {
+      await safeFill(
+        root,
+        "upgradeId",
+        `/api/v1/players/${encodeURIComponent(active.playerId)}/cards/${encodeURIComponent(active.playerCardId)}/upgrades`,
+        upgrade => upgrade.id || upgrade.Id,
+        upgrade => `${upgrade.id || upgrade.Id} - ${upgrade.upgradeKind || upgrade.UpgradeKind}`,
+        "Selecciona un upgrade",
+        true);
+    } else {
+      fillSelect(root.querySelector("[data-picker='upgradeId']"), [], () => "", () => "", "Selecciona un upgrade");
+    }
+
+    if (active.cardId) {
+      try {
+        const recipe = await getJson(`/api/v1/crafting/cards/${encodeURIComponent(active.cardId)}`, false);
+        fillSelect(
+          root.querySelector("[data-picker='requirementId']"),
+          recipe.requirements || recipe.Requirements || [],
+          requirement => requirement.id || requirement.Id,
+          requirement => `${requirement.id || requirement.Id} - ${requirement.itemTypeKey || requirement.ItemTypeKey} x${requirement.quantityRequired ?? requirement.QuantityRequired}`,
+          "Selecciona un requirement");
+      } catch {
+        fillSelect(root.querySelector("[data-picker='requirementId']"), [], () => "", () => "", "Selecciona un requirement");
+      }
+    } else {
+      fillSelect(root.querySelector("[data-picker='requirementId']"), [], () => "", () => "", "Selecciona un requirement");
+    }
+
+    if (active.matchId && active.playerId && active.token) {
+      try {
+        const snapshot = await getJson(`/api/v1/matches/${encodeURIComponent(active.matchId)}/snapshot/${encodeURIComponent(active.playerId)}`, true);
+        const localSeatIndex = snapshot.localSeatIndex ?? snapshot.LocalSeatIndex;
+        const seats = snapshot.seats || snapshot.Seats || [];
+        const localSeat = seats.find(seat => (seat.seatIndex ?? seat.SeatIndex) === localSeatIndex);
+        const runtimeCards = ((localSeat && (localSeat.board || localSeat.Board)) || [])
+          .filter(slot => slot.occupied ?? slot.Occupied)
+          .map(slot => {
+            const occupant = slot.occupant || slot.Occupant || {};
+            return {
+              runtimeId: occupant.runtimeId || occupant.RuntimeId,
+              cardId: occupant.cardId || occupant.CardId,
+              displayName: occupant.displayName || occupant.DisplayName,
+              slot: slot.slot || slot.Slot
+            };
+          });
+        fillSelect(
+          root.querySelector("[data-picker='runtimeCardId']"),
+          runtimeCards,
+          card => card.runtimeId,
+          card => `${card.slot} - ${card.cardId} - ${card.displayName}`,
+          "Selecciona una carta en juego");
+      } catch {
+        fillSelect(root.querySelector("[data-picker='runtimeCardId']"), [], () => "", () => "", "Selecciona una carta en juego");
+      }
+    } else {
+      fillSelect(root.querySelector("[data-picker='runtimeCardId']"), [], () => "", () => "", "Selecciona una carta en juego");
     }
   }
 
@@ -311,6 +412,8 @@
             <label>Player ID<input data-field="playerId" placeholder="{{playerId}}"></label>
             <label>Deck ID<input data-field="deckId" placeholder="deck_playerone_1"></label>
             <label>Opponent ID<input data-field="opponentId" placeholder="{{opponentId}}"></label>
+            <label>Item Type Key<input data-field="itemTypeKey" placeholder="{{itemTypeKey}}"></label>
+            <label>Player Card ID<input data-field="playerCardId" placeholder="{{playerCardId}}"></label>
           </div>
           <label>JWT token<textarea data-field="token" placeholder="Login lo llena automaticamente"></textarea></label>
           <div class="cardduel-helper__actions">
@@ -332,13 +435,16 @@
             <label>Ability ID<input data-field="abilityId" form="cardduel-none" placeholder="{{abilityId}}"></label>
             <label>Visual Profile Key<input data-field="profileKey" form="cardduel-none" placeholder="{{profileKey}}"></label>
             <label>Deck Entry ID<input data-field="deckEntryId" form="cardduel-none" placeholder="{{deckEntryId}}"></label>
+            <label>Upgrade ID<input data-field="upgradeId" form="cardduel-none" placeholder="{{upgradeId}}"></label>
+            <label>Requirement ID<input data-field="requirementId" form="cardduel-none" placeholder="{{requirementId}}"></label>
+            <label>Runtime Card ID<input data-field="runtimeCardId" form="cardduel-none" placeholder="{{runtimeCardId}}"></label>
           </div>
           <div class="cardduel-helper__actions">
             <button type="button" data-action="saveVariables">Guardar variables</button>
             <button type="button" data-action="copyVariables" class="ghost">Copiar variables</button>
             <button type="button" data-action="clearToken" class="ghost">Limpiar token</button>
           </div>
-          <p class="cardduel-helper__hint">Placeholders soportados y persistentes: <code>{{playerId}}</code>, <code>{{deckId}}</code>, <code>{{matchId}}</code>, <code>{{roomCode}}</code>, <code>{{reconnectToken}}</code>, <code>{{rulesetId}}</code>, <code>{{opponentId}}</code>, <code>{{cardId}}</code>, <code>{{abilityId}}</code>, <code>{{profileKey}}</code>, <code>{{deckEntryId}}</code>. El interceptor los reemplaza antes de enviar cada request.</p>
+          <p class="cardduel-helper__hint">Placeholders soportados y persistentes: <code>{{playerId}}</code>, <code>{{deckId}}</code>, <code>{{matchId}}</code>, <code>{{roomCode}}</code>, <code>{{reconnectToken}}</code>, <code>{{rulesetId}}</code>, <code>{{opponentId}}</code>, <code>{{cardId}}</code>, <code>{{abilityId}}</code>, <code>{{profileKey}}</code>, <code>{{deckEntryId}}</code>, <code>{{itemTypeKey}}</code>, <code>{{playerCardId}}</code>, <code>{{upgradeId}}</code>, <code>{{requirementId}}</code>, <code>{{runtimeCardId}}</code>. El interceptor los reemplaza antes de enviar cada request.</p>
         </div>
         <div class="cardduel-helper__section cardduel-helper__section--wide">
           <h3>Pickers desde base de datos</h3>
@@ -348,6 +454,11 @@
             <label>Ability<select data-picker="abilityId"></select></label>
             <label>Visual Template<select data-picker="profileKey"></select></label>
             <label>Deck Entry<select data-picker="deckEntryId"></select></label>
+            <label>Item Type<select data-picker="itemTypeKey"></select></label>
+            <label>Owned Card<select data-picker="playerCardId"></select></label>
+            <label>Upgrade<select data-picker="upgradeId"></select></label>
+            <label>Craft Requirement<select data-picker="requirementId"></select></label>
+            <label>Runtime Board Card<select data-picker="runtimeCardId"></select></label>
             <label>Effect kind<select data-picker="effectKind"></select></label>
             <label>Target selector<select data-picker="targetSelector"></select></label>
           </div>
@@ -371,6 +482,7 @@
     renderProfileOptions(select, profiles, selectedIndex);
     writeProfile(root, profile);
     authorize(profile.token);
+    refreshPickers(root).catch(() => {});
 
     select.addEventListener("change", () => {
       selectedIndex = Number.parseInt(select.value, 10);
@@ -378,6 +490,7 @@
       writeProfile(root, profiles[selectedIndex]);
       authorize(profiles[selectedIndex].token);
       setStatus(root, `Perfil activo: ${profiles[selectedIndex].name}`);
+      refreshPickers(root).catch(() => {});
     });
 
     root.addEventListener("click", async (event) => {
@@ -417,6 +530,7 @@
           saveProfiles(profiles);
           writeProfile(root, profiles[selectedIndex]);
           handleAuthData(data, "Login");
+          refreshPickers(root).catch(() => {});
         }
 
         if (action === "register") {
@@ -428,6 +542,7 @@
           renderProfileOptions(select, profiles, selectedIndex);
           writeProfile(root, profiles[selectedIndex]);
           handleAuthData(data, "Register");
+          refreshPickers(root).catch(() => {});
         }
 
         if (action === "authorize") {
@@ -483,8 +598,8 @@
     replaceVariables: function (value) {
       const profile = this.getActiveProfile();
       let result = value || "";
-      for (const key of ["playerId", "deckId", "matchId", "roomCode", "reconnectToken", "rulesetId", "opponentId", "cardId", "abilityId", "profileKey", "deckEntryId"]) {
-        const replacement = profile[key] || "";
+      for (const key of [...variableKeys, "userId"]) {
+        const replacement = key === "userId" ? (profile.playerId || "") : (profile[key] || "");
         const token = `{{${key}}}`;
         const lowerToken = token.toLowerCase();
         const encodedToken = encodeURIComponent(token);

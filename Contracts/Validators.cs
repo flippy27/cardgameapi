@@ -28,6 +28,19 @@ public sealed class EndTurnRequestValidator : AbstractValidator<EndTurnRequest>
     }
 }
 
+public sealed class DestroyCardRequestValidator : AbstractValidator<DestroyCardRequest>
+{
+    public DestroyCardRequestValidator()
+    {
+        RuleFor(x => x.PlayerId)
+            .NotEmpty().WithMessage("PlayerId is required")
+            .MaximumLength(255).WithMessage("PlayerId too long");
+
+        RuleFor(x => x.RuntimeCardId)
+            .NotEmpty().WithMessage("RuntimeCardId is required");
+    }
+}
+
 public sealed class SetReadyRequestValidator : AbstractValidator<SetReadyRequest>
 {
     public SetReadyRequestValidator()

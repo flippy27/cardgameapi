@@ -57,6 +57,14 @@ public sealed class MatchHub(IMatchService matchService, ILogger<MatchHub> logge
         return snapshot;
     }
 
+    public async Task<MatchSnapshot> DestroyCard(DestroyCardRequest request)
+    {
+        EnsurePlayer(request.PlayerId);
+        var snapshot = ExecuteMatchAction(() => matchService.DestroyCard(request.MatchId, request.PlayerId, request.RuntimeCardId));
+        await BroadcastMatch(request.MatchId);
+        return snapshot;
+    }
+
     public async Task<MatchSnapshot> Forfeit(ForfeitRequest request)
     {
         EnsurePlayer(request.PlayerId);

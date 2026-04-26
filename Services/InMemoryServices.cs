@@ -35,6 +35,7 @@ public interface IMatchService
     MatchSnapshot SetReady(string matchId, string playerId, bool ready);
     MatchSnapshot PlayCard(string matchId, string playerId, string runtimeHandKey, int slotIndex);
     MatchSnapshot EndTurn(string matchId, string playerId);
+    MatchSnapshot DestroyCard(string matchId, string playerId, string runtimeCardId);
     MatchSnapshot Forfeit(string matchId, string playerId);
     MatchCompletionResponse CompleteMatch(string matchId, string playerId, string opponentId, bool playerWon, int durationSeconds);
     PostActionsResponse ProcessActions(string matchId, PostActionsRequest request);
@@ -332,6 +333,17 @@ public sealed class InMemoryMatchService : IMatchService, IDisposable
 
         // Log action to replay
         _ = LogReplayActionAsync(matchId, playerId, "EndTurn", new { });
+
+        return room.Engine.CreateSnapshotForSeat(seatIndex);
+    }
+
+    public MatchSnapshot DestroyCard(string matchId, string playerId, string runtimeCardId)
+    {
+        var room = GetRoom(matchId);
+        room.Engine.DestroyCard(playerId, runtimeCardId);
+        var seatIndex = room.Engine.Seats.First(x => x.PlayerId == playerId).SeatIndex;
+
+        _ = LogReplayActionAsync(matchId, playerId, "DestroyCard", new { runtimeCardId });
 
         return room.Engine.CreateSnapshotForSeat(seatIndex);
     }

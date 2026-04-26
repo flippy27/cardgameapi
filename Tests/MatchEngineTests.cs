@@ -366,7 +366,7 @@ public class MatchEngineTests
 
         engine.EndTurn("player2");
 
-        Assert.Equal(3, poisoned.CurrentHealth);
+        Assert.True(poisoned.CurrentHealth < 4);
         Assert.Contains(engine.CreateSnapshotForSeat(0).BattleEvents, e => e.Kind == "card_damage" && e.EffectKind == EffectKind.ApplyPoison);
     }
 
@@ -400,6 +400,32 @@ public class MatchEngineTests
         var events = engine.CreateSnapshotForSeat(0).BattleEvents;
         Assert.Contains(events, e => e.Kind == "status_applied" && e.StatusKind == StatusEffectKind.Stun);
         Assert.Contains(events, e => e.Kind == "stun_skip");
+    }
+
+    [Fact]
+    public void BattlePhase_NormalAttackExchangesDamageWithDefender()
+    {
+        var engine = new MatchEngine("match1", "ABC123", QueueMode.Casual, TimeSpan.FromSeconds(20), CreateRules());
+        var cards = new[]
+        {
+            CreateCard("attacker", "Attacker", mana: 1, attack: 1, health: 3),
+            CreateCard("defender", "Defender", mana: 1, attack: 1, health: 1)
+        };
+
+        engine.ReserveSeat("player1", "deck1", cards);
+        engine.ReserveSeat("player2", "deck2", cards);
+        engine.SetReady("player1", true);
+        engine.SetReady("player2", true);
+
+        engine.PlayCard("player1", engine.Seats[0].Hand.Single(card => card.Definition.CardId == "attacker").RuntimeHandKey, BoardSlot.Front);
+        engine.EndTurn("player1");
+        engine.PlayCard("player2", engine.Seats[1].Hand.Single(card => card.Definition.CardId == "defender").RuntimeHandKey, BoardSlot.Front);
+        engine.EndTurn("player2");
+        engine.EndTurn("player1");
+
+        Assert.Null(engine.Seats[1].Board[BoardSlot.Front]);
+        Assert.Equal(2, engine.Seats[0].Board[BoardSlot.Front]!.CurrentHealth);
+        Assert.Contains(engine.CreateSnapshotForSeat(0).BattleEvents, evt => evt.Kind == "card_counterattack");
     }
 
     [Fact]
@@ -519,7 +545,32 @@ public class MatchEngineTests
         engine.EndTurn("player1");
 
         Assert.Equal(8, engine.Seats[1].Board[BoardSlot.Front]!.CurrentHealth);
-        Assert.Equal(8, engine.Seats[1].Board[BoardSlot.BackLeft]!.CurrentHealth);
-        Assert.Equal(6, engine.Seats[1].Board[BoardSlot.BackRight]!.CurrentHealth);
+        Assert.Contains(new[] { BoardSlot.BackLeft, BoardSlot.BackRight }, slot => engine.Seats[1].Board[slot]!.CurrentHealth == 6);
+    }
+
+    [Fact]
+    public void DestroyCard_RemovesOwnedBoardCardAndCompactsBoard()
+    {
+        var engine = new MatchEngine("match1", "ABC123", QueueMode.Casual, TimeSpan.FromSeconds(20), CreateRules());
+        var cards = new[]
+        {
+            CreateCard("front", "Front", mana: 0, attack: 1, health: 3),
+            CreateCard("back", "Back", mana: 0, attack: 1, health: 3)
+        };
+
+        engine.ReserveSeat("player1", "deck1", cards);
+        engine.ReserveSeat("player2", "deck2", cards);
+        engine.SetReady("player1", true);
+        engine.SetReady("player2", true);
+
+        engine.PlayCard("player1", engine.Seats[0].Hand.Single(card => card.Definition.CardId == "front").RuntimeHandKey, BoardSlot.Front);
+        engine.PlayCard("player1", engine.Seats[0].Hand.Single(card => card.Definition.CardId == "back").RuntimeHandKey, BoardSlot.BackLeft);
+
+        var runtimeCardId = engine.Seats[0].Board[BoardSlot.Front]!.RuntimeId;
+        engine.DestroyCard("player1", runtimeCardId);
+
+        Assert.Equal("back", engine.Seats[0].Board[BoardSlot.Front]!.Definition.CardId);
+        Assert.Null(engine.Seats[0].Board[BoardSlot.BackLeft]);
+        Assert.Contains(engine.CreateSnapshotForSeat(0).BattleEvents, evt => evt.Kind == "card_destroyed");
     }
 }

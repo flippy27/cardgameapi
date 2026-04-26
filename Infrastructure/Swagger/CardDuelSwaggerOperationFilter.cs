@@ -274,6 +274,9 @@ public sealed class CardDuelSwaggerOperationFilter : IOperationFilter
         ["POST /api/v1/matches/{matchId}/end-turn"] = new(
             "End the active player's turn",
             "Triggers the server battle phase when appropriate. Illegal turn ownership returns a parseable `GameActionErrorDto`."),
+        ["POST /api/v1/matches/{matchId}/destroy-card"] = new(
+            "Destroy an in-play card you own",
+            "Immediately destroys one board card by `runtimeCardId`, compacts the board, emits ordered battle events, and returns the new authoritative snapshot. This is intentionally available outside normal turn timing so the client can support sacrifice/delete flows."),
         ["PUT /api/v1/decks"] = new(
             "Create or replace a player's deck",
             "The `playerId` must match the JWT subject. Deck validation is server-side and checks card ids/counts."),
@@ -292,6 +295,66 @@ public sealed class CardDuelSwaggerOperationFilter : IOperationFilter
         ["DELETE /api/v1/decks/{playerId}/{deckId}/cards/{entryId}"] = new(
             "Remove one card copy from deck",
             "Removes one specific deck_cards row by `entryId`, then compacts deck order."),
+        ["GET /api/v1/items"] = new(
+            "List item types",
+            "Returns the global item catalog used by inventory, crafting, upgrades, and reward systems. Use this to discover valid `itemTypeKey` values before granting, consuming, or authoring crafting requirements."),
+        ["GET /api/v1/items/{key}"] = new(
+            "Get one item type",
+            "Reads one item definition by stable key such as `card_dust`, `arcane_shard`, or `upgrade_stone`."),
+        ["GET /api/v1/players/{userId}/inventory"] = new(
+            "Get a player's full inventory",
+            "Returns the authenticated player's item balances. `userId` should usually be `{{playerId}}` from the Swagger helper profile."),
+        ["GET /api/v1/players/{userId}/inventory/{itemTypeKey}"] = new(
+            "Get one inventory balance",
+            "Reads the authenticated player's balance for a single item key. Use this before consume/craft flows if you want a focused balance check."),
+        ["POST /api/v1/players/{userId}/inventory/grant"] = new(
+            "Grant items",
+            "Adds quantity to the player's inventory for rewards, testing, or admin flows. The response returns the updated inventory row."),
+        ["POST /api/v1/players/{userId}/inventory/consume"] = new(
+            "Consume items",
+            "Subtracts quantity from the player's inventory. Returns `409` if the player does not have enough of the requested item."),
+        ["GET /api/v1/players/{userId}/cards"] = new(
+            "Get player card collection",
+            "Returns every owned card instance for the authenticated player. Each row is a player-owned copy with its own id, independent from the shared card definition."),
+        ["GET /api/v1/players/{userId}/cards/summary"] = new(
+            "Get collection summary",
+            "Returns the player's collection grouped by `cardId`, including owned copy counts and the instance ids that can later be used for upgrades or deck ownership flows."),
+        ["GET /api/v1/players/{userId}/cards/{playerCardId}"] = new(
+            "Get one owned card instance",
+            "Reads a single player-owned card with computed effective stats and upgrade history."),
+        ["GET /api/v1/players/{userId}/cards/by-card/{cardId}"] = new(
+            "Get all owned copies of one card definition",
+            "Useful when you want to know how many copies of `{{cardId}}` the authenticated player owns."),
+        ["POST /api/v1/players/{userId}/cards/grant"] = new(
+            "Grant a player-owned card copy",
+            "Creates one new card instance in the player's collection from an existing card definition id."),
+        ["DELETE /api/v1/players/{userId}/cards/{playerCardId}"] = new(
+            "Delete a player-owned card copy",
+            "Removes one owned card instance by its unique `playerCardId`."),
+        ["GET /api/v1/players/{userId}/cards/{playerCardId}/upgrades"] = new(
+            "List upgrades on one owned card",
+            "Returns every upgrade row applied to a single player-owned card instance."),
+        ["POST /api/v1/players/{userId}/cards/{playerCardId}/upgrades"] = new(
+            "Apply an upgrade to one owned card",
+            "Adds one upgrade row such as attack bonus, health bonus, armor bonus, level up, or added ability. Effective stats are recomputed server-side."),
+        ["DELETE /api/v1/players/{userId}/cards/{playerCardId}/upgrades/{upgradeId}"] = new(
+            "Delete one upgrade row",
+            "Removes a specific upgrade entry from a player-owned card instance."),
+        ["GET /api/v1/crafting/cards"] = new(
+            "List craftable cards",
+            "Returns cards that currently have crafting requirements configured."),
+        ["GET /api/v1/crafting/cards/{cardId}"] = new(
+            "Get crafting requirements for one card",
+            "Reads the full crafting recipe for a card, including required item types and quantities."),
+        ["POST /api/v1/crafting/cards/{cardId}"] = new(
+            "Craft one card copy",
+            "Consumes the authenticated player's required items and grants a new player-owned card instance atomically."),
+        ["PUT /api/v1/crafting/cards/{cardId}/requirements"] = new(
+            "Replace crafting requirements",
+            "Authoring/admin endpoint that replaces the full recipe for a card. Pass an empty list to make the card uncraftable."),
+        ["DELETE /api/v1/crafting/cards/{cardId}/requirements/{requirementId}"] = new(
+            "Delete one crafting requirement",
+            "Removes a single requirement row from a card recipe."),
         ["POST /api/v1/cards"] = new(
             "Create a card definition",
             "Admin-style card authoring endpoint. Supports server-authoritative gameplay stats, battle presentation metadata, visual profiles, abilities, and effects."),
@@ -407,6 +470,12 @@ public sealed class CardDuelSwaggerOperationFilter : IOperationFilter
         ["playerId"] = "Must match the authenticated JWT subject. Login response gives you the correct value.",
         ["matchId"] = "Match id returned by matchmaking or private match creation.",
         ["cardId"] = "Stable card definition id, for example `card_001` or a custom authored id.",
+        ["userId"] = "Authenticated player id for ownership/inventory endpoints. In Swagger this is usually `{{playerId}}` from the helper profile.",
+        ["itemTypeKey"] = "Stable item type key such as `card_dust`, `arcane_shard`, `upgrade_stone`, or a future economy item.",
+        ["playerCardId"] = "Unique player-owned card instance id, not the shared card definition id.",
+        ["upgradeId"] = "Unique player-card-upgrade row id.",
+        ["requirementId"] = "Unique crafting requirement row id.",
+        ["runtimeCardId"] = "Runtime board card id from the latest match snapshot. Use this to destroy a specific in-play card.",
         ["profileKey"] = "Stable visual profile key, for example `hand-default`, `played-premium`, `full-art`, `reward-legendary`, or `inspect-gallery`.",
         ["abilityId"] = "Stable ability id attached to the card, for example `poison` or `regenerate_left`.",
         ["effectId"] = "Database id of the effect row.",
@@ -421,12 +490,18 @@ public sealed class CardDuelSwaggerOperationFilter : IOperationFilter
     private static readonly Dictionary<string, string> ParameterExamples = new(StringComparer.OrdinalIgnoreCase)
     {
         ["playerId"] = "{{playerId}}",
+        ["userId"] = "{{playerId}}",
         ["matchId"] = "{{matchId}}",
         ["roomCode"] = "{{roomCode}}",
         ["deckid"] = "{{deckId}}",
         ["playerid"] = "{{playerId}}",
         ["deckId"] = "{{deckId}}",
         ["cardId"] = "{{cardId}}",
+        ["itemTypeKey"] = "{{itemTypeKey}}",
+        ["playerCardId"] = "{{playerCardId}}",
+        ["upgradeId"] = "{{upgradeId}}",
+        ["requirementId"] = "{{requirementId}}",
+        ["runtimeCardId"] = "{{runtimeCardId}}",
         ["abilityId"] = "{{abilityId}}",
         ["entryId"] = "{{deckEntryId}}",
         ["profileKey"] = "{{profileKey}}",
@@ -673,12 +748,27 @@ public sealed class CardDuelSwaggerOperationFilter : IOperationFilter
                     ("playBackLeft", "Play card to back-left slot", "Server may shift occupied slots according to board rules.", new { matchId = "{{matchId}}", playerId = "{{playerId}}", runtimeHandKey = "hand-2", slotIndex = 1 })),
                 "EndTurnRequest" => Examples(
                     ("endTurn", "End current turn", "Only valid if the authenticated player owns the active turn.", new { matchId = "{{matchId}}", playerId = "{{playerId}}" })),
+                "DestroyCardRequest" => Examples(
+                    ("destroyBoardCard", "Destroy one owned board card", "Use `runtimeCardId` from the latest snapshot. The server compacts the board after destruction.", new { matchId = "{{matchId}}", playerId = "{{playerId}}", runtimeCardId = "{{runtimeCardId}}" })),
                 "ForfeitRequest" => Examples(
                     ("forfeit", "Forfeit match", "Ends the match and declares the opponent winner.", new { matchId = "{{matchId}}", playerId = "{{playerId}}" })),
                 "MatchCompletionRequest" => Examples(
                     ("completeCasual", "Record completion", "Manual match completion payload.", new { playerId = "{{playerId}}", opponentId = "{{opponentId}}", playerWon = true, durationSeconds = 420, playerRatingBefore = 1000, opponentRatingBefore = 1000 })),
                 "PostActionsRequest" => Examples(
                     ("singleAction", "Post action batch", "Legacy action ingestion example.", new { matchId = "{{matchId}}", actions = new[] { new { actionNumber = 1, sequence = 1, timestamp = DateTime.UtcNow, playerId = "{{playerId}}", actionType = "play_card", data = new { runtimeHandKey = "hand-1", slotIndex = 0 } } }, globalSequence = 1, timestamp = DateTime.UtcNow })),
+                "GrantItemsRequest" => Examples(
+                    ("grantDust", "Grant crafting dust", "Adds a reward-like amount of dust to the authenticated player's inventory.", new { itemTypeKey = "{{itemTypeKey}}", quantity = 100, reason = "swagger_reward_test" }),
+                    ("grantUpgradeStones", "Grant upgrade stones", "Useful before testing player-card upgrade flows.", new { itemTypeKey = "upgrade_stone", quantity = 5, reason = "swagger_upgrade_test" })),
+                "ConsumeItemsRequest" => Examples(
+                    ("consumeDust", "Consume some dust", "Use this to test insufficient-balance handling and manual inventory corrections.", new { itemTypeKey = "{{itemTypeKey}}", quantity = 25, reason = "swagger_consume_test" })),
+                "GrantPlayerCardRequest" => Examples(
+                    ("grantSelectedCard", "Grant selected card definition", "Creates one player-owned copy of the selected `{{cardId}}` definition.", new { cardId = "{{cardId}}", acquiredFrom = "swagger_grant" })),
+                "ApplyUpgradeRequest" => Examples(
+                    ("attackBonus", "Apply attack bonus", "Adds +1 attack to the selected player-owned card instance.", new { upgradeKind = "attack_bonus", intValue = 1, stringValue = (string?)null, appliedBy = "swagger", note = "Basic attack tuning test" }),
+                    ("addedAbility", "Grant an extra ability", "Attaches the selected reusable ability to the selected player-owned card instance.", new { upgradeKind = "added_ability", intValue = (int?)null, stringValue = "{{abilityId}}", appliedBy = "swagger", note = "Testing dynamic ability grants" })),
+                "SetCraftingRequirementsRequest" => Examples(
+                    ("singleCurrency", "Simple dust recipe", "Makes the selected card craftable with one resource.", new { requirements = new[] { new { itemTypeKey = "card_dust", quantityRequired = 120 } } }),
+                    ("multiCurrency", "Multi-resource recipe", "Example with both generic and rarity/faction materials.", new { requirements = new[] { new { itemTypeKey = "card_dust", quantityRequired = 300 }, new { itemTypeKey = "arcane_shard", quantityRequired = 2 }, new { itemTypeKey = "faction_void", quantityRequired = 4 } } })),
                 "UpsertGameRulesetRequest" => Examples(
                     ("standard", "Standard 20 HP rules", "Default-feeling match rules.", new { rulesetKey = "standard_20hp", displayName = "Standard 20 HP", description = "Balanced baseline ruleset.", isActive = true, isDefault = false, startingHeroHealth = 20, maxHeroHealth = 20, startingMana = 1, maxMana = 10, manaGrantedPerTurn = 1, manaGrantTiming = 0, initialDrawCount = 4, cardsDrawnOnTurnStart = 1, startingSeatIndex = 0, seatOverrides = Array.Empty<object>() }),
                     ("handicap", "Seat handicap test", "Example with seat-specific mana/HP changes.", new { rulesetKey = "handicap_test", displayName = "Handicap Test", description = "Seat 1 starts slightly ahead for testing.", isActive = true, isDefault = false, startingHeroHealth = 20, maxHeroHealth = 20, startingMana = 1, maxMana = 10, manaGrantedPerTurn = 1, manaGrantTiming = 0, initialDrawCount = 4, cardsDrawnOnTurnStart = 1, startingSeatIndex = 0, seatOverrides = new[] { new { seatIndex = 1, additionalHeroHealth = 5, additionalMaxHeroHealth = 5, additionalStartingMana = 1, additionalMaxMana = 0, additionalManaPerTurn = 0, additionalCardsDrawnOnTurnStart = 0 } } })),

@@ -74,6 +74,13 @@ public sealed class MatchesController(IMatchService matchService, AppDbContext d
         return ExecuteMatchAction(() => matchService.EndTurn(matchId, request.PlayerId));
     }
 
+    [HttpPost("{matchId}/destroy-card")]
+    public ActionResult<MatchSnapshot> DestroyCard(string matchId, DestroyCardRequest request)
+    {
+        EnsurePlayer(request.PlayerId);
+        return ExecuteMatchAction(() => matchService.DestroyCard(matchId, request.PlayerId, request.RuntimeCardId));
+    }
+
     [HttpPost("{matchId}/forfeit")]
     public ActionResult<MatchSnapshot> Forfeit(string matchId, ForfeitRequest request)
     {
