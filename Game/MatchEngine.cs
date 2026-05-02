@@ -147,6 +147,7 @@ public sealed record ServerAbilityDefinition(
     TriggerKind Trigger,
     TargetSelectorKind Selector,
     IReadOnlyList<ServerEffectDefinition> Effects,
+    //SkillType SkillType = SkillType.Utility,
     SkillType SkillType = SkillType.Utility,
     string? AnimationCueId = null,
     string? ConditionsJson = null,

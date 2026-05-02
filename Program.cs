@@ -191,12 +191,11 @@ using (var scope = app.Services.CreateScope())
         migrationLogger.LogInformation("Starting database migrations...");
         db.Database.Migrate();
         migrationLogger.LogInformation("Database migrations completed successfully");
-        CardCatalogSeeder.SeedCards(db);
-        migrationLogger.LogInformation("Card catalog seeded");
-        AuthoringSeeder.SeedAuthoringData(db);
-        migrationLogger.LogInformation("Authoring lookup/template data seeded");
-        GameRulesetSeeder.SeedDefaultRuleset(db);
-        migrationLogger.LogInformation("Default game ruleset seeded");
+        // NOTE: Auto-seeding disabled. Run seeding manually when needed:
+        // AuthoringSeeder.SeedLookupDefinitions(db);
+        // CardCatalogSeeder.SeedCards(db);
+        // AuthoringSeeder.SeedAuthoringData(db);
+        // GameRulesetSeeder.SeedDefaultRuleset(db);
     }
     catch (Exception ex)
     {
