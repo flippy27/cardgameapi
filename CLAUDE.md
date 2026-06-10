@@ -21,7 +21,7 @@ The Unity client lives in `../cardsGame` (repo `flippy27/cardgame`). This repo i
 ./start-dev.sh
 dotnet watch run            # or: ./run-api.sh  (sets ASPNETCORE_ENVIRONMENT=Development)
 
-# full monitored stack (nginx/api/postgres/redis/prometheus/grafana behind :80)
+# full stack (nginx + api + postgres + redis behind :80)
 docker-compose up -d
 
 dotnet test                 # run tests
