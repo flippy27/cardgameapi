@@ -45,13 +45,14 @@ place):
 > Needs a Unity compile + single-player playtest to confirm. The old `ParseEnum<T>`
 > helper is now unused (harmless).
 
-### 2. `MatchHistoryEntryDto.createdAt` type — REPORT
-Server sends `createdAt` as `DateTimeOffset` (ISO-8601 string); client DTO
-(`MatchHistoryApiClient.MatchHistoryEntryDto`) declares `long createdAt` →
-`JsonUtility` leaves it `0`. Client also omits `rulesetId`/`rulesetName` (additive,
-harmless). **Recommended:** change client `createdAt` to `string`. Same pattern to
-verify on `DeckDto.createdAt`/`updatedAt` (`long`) vs whatever `DecksController`
-list returns.
+### 2. Date fields typed `long` — FIXED (client)
+Server sends all dates as `DateTimeOffset` (ISO-8601 string). Client DTOs declared
+several as `long` → `JsonUtility` left them `0`. Retyped to `string`:
+`MatchHistoryApiClient.MatchHistoryEntryDto.createdAt`, `MatchHistoryService`
+`MatchHistoryEntry.createdAt`, `DeckDto.createdAt`/`updatedAt`,
+`UserApiClient.AchievementDto.unlockedAt`. Only consumer was a string→string copy;
+no arithmetic relied on the `long`. Client still omits `rulesetId`/`rulesetName` on
+match-history (additive, harmless).
 
 ### 3. Deck-level DELETE endpoint missing — REPORT
 Server only exposes `DELETE /api/v1/decks/{playerId}/{deckId}/cards/{entryId}`
