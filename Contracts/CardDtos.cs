@@ -22,31 +22,7 @@ public sealed record CardDefinitionDto(
     int DefaultAttackSelector,
     int TurnsUntilCanAttack,
     bool IsLimited,
-    BattlePresentationDto? BattlePresentation,
-    IReadOnlyList<CardVisualProfileDto> VisualProfiles,
     List<AbilityDto> Abilities);
-
-public sealed record BattlePresentationDto(
-    int AttackMotionLevel,
-    int AttackShakeLevel,
-    string? AttackDeliveryType,
-    string? ImpactFxId,
-    string? AttackAudioCueId,
-    string? MetadataJson);
-
-public sealed record CardVisualLayerDto(
-    string Surface,
-    string Layer,
-    string SourceKind,
-    string AssetRef,
-    int SortOrder,
-    string? MetadataJson);
-
-public sealed record CardVisualProfileDto(
-    string ProfileKey,
-    string DisplayName,
-    bool IsDefault,
-    IReadOnlyList<CardVisualLayerDto> Layers);
 
 public sealed record AuthoringLookupDto(
     int Id,
@@ -73,21 +49,6 @@ public sealed record StatusEffectKindDefinitionDto(
     string DisplayName,
     string Description,
     string Category,
-    string? IconAssetRef,
-    string? VfxCueId,
-    string? UiColorHex,
-    string? MetadataJson);
-
-public sealed record AbilityPresentationDto(
-    string AbilityId,
-    string DisplayName,
-    string? IconAssetRef,
-    string? StatusIconAssetRef,
-    string? AnimationCueId,
-    string? VfxCueId,
-    string? AudioCueId,
-    string? UiColorHex,
-    string? TooltipSummary,
     string? MetadataJson);
 
 public sealed record AbilityAuthoringDto(
@@ -99,83 +60,10 @@ public sealed record AbilityAuthoringDto(
     int TriggerKind,
     int TargetSelectorKind,
     string? AnimationCueId,
-    string? IconAssetRef,
-    string? StatusIconAssetRef,
-    string? VfxCueId,
-    string? AudioCueId,
-    string? UiColorHex,
     string? TooltipSummary,
     string? ConditionsJson,
     string? MetadataJson,
     IReadOnlyList<EffectDto> Effects);
-
-public sealed record UpsertAbilityPresentationRequest(
-    string? IconAssetRef = null,
-    string? StatusIconAssetRef = null,
-    string? AnimationCueId = null,
-    string? VfxCueId = null,
-    string? AudioCueId = null,
-    string? UiColorHex = null,
-    string? TooltipSummary = null,
-    string? MetadataJson = null);
-
-public sealed record CardVisualProfileTemplateDto(
-    string Id,
-    string ProfileKey,
-    string DisplayName,
-    string Description,
-    bool IsActive,
-    IReadOnlyList<CardVisualLayerDto> Layers,
-    string? MetadataJson,
-    DateTimeOffset CreatedAt,
-    DateTimeOffset? UpdatedAt);
-
-public sealed record UpsertCardVisualProfileTemplateRequest(
-    [Required] string ProfileKey,
-    [Required] string DisplayName,
-    string Description,
-    bool IsActive,
-    [Required] IReadOnlyList<UpsertCardVisualLayerRequest> Layers,
-    string? MetadataJson = null);
-
-public sealed record AssignCardVisualProfileTemplateRequest(
-    [Required] string ProfileKey,
-    bool IsDefault = false,
-    string? OverrideDisplayName = null,
-    IReadOnlyList<UpsertCardVisualLayerRequest>? OverrideLayers = null,
-    string? MetadataJson = null);
-
-public sealed record CardVisualProfileAssignmentDto(
-    string Id,
-    string CardId,
-    string TemplateId,
-    string ProfileKey,
-    string DisplayName,
-    bool IsDefault,
-    IReadOnlyList<CardVisualLayerDto> Layers,
-    string? MetadataJson);
-
-public sealed record UpsertBattlePresentationRequest(
-    [Range(0, 5)] int AttackMotionLevel = 0,
-    [Range(0, 5)] int AttackShakeLevel = 0,
-    string? AttackDeliveryType = null,
-    string? ImpactFxId = null,
-    string? AttackAudioCueId = null,
-    string? MetadataJson = null);
-
-public sealed record UpsertCardVisualLayerRequest(
-    [Required] string Surface,
-    [Required] string Layer,
-    [Required] string SourceKind,
-    [Required] string AssetRef,
-    int SortOrder = 0,
-    string? MetadataJson = null);
-
-public sealed record UpsertCardVisualProfileRequest(
-    [Required] string ProfileKey,
-    [Required] string DisplayName,
-    bool IsDefault,
-    [Required] IReadOnlyList<UpsertCardVisualLayerRequest> Layers);
 
 public sealed record CreateCardRequest(
     [Required] string CardId,
@@ -192,9 +80,7 @@ public sealed record CreateCardRequest(
     [Range(0, 2)] int AllowedRow,
     [Range(0, 4)] int DefaultAttackSelector,
     [Range(0, 5)] int TurnsUntilCanAttack = 1,
-    bool IsLimited = false,
-    UpsertBattlePresentationRequest? BattlePresentation = null,
-    IReadOnlyList<UpsertCardVisualProfileRequest>? VisualProfiles = null);
+    bool IsLimited = false);
 
 public sealed record UpdateCardRequest(
     string? DisplayName,
@@ -210,9 +96,7 @@ public sealed record UpdateCardRequest(
     int? AllowedRow,
     int? DefaultAttackSelector,
     int? TurnsUntilCanAttack,
-    bool? IsLimited,
-    UpsertBattlePresentationRequest? BattlePresentation = null,
-    IReadOnlyList<UpsertCardVisualProfileRequest>? VisualProfiles = null);
+    bool? IsLimited);
 
 // ===== Ability DTOs =====
 
@@ -238,11 +122,6 @@ public sealed record CreateAbilityRequest(
     [Required] List<CreateEffectRequest> Effects,
     [Range(0, 4)] int SkillType = 3,
     string? AnimationCueId = null,
-    string? IconAssetRef = null,
-    string? StatusIconAssetRef = null,
-    string? VfxCueId = null,
-    string? AudioCueId = null,
-    string? UiColorHex = null,
     string? TooltipSummary = null,
     string? ConditionsJson = null,
     string? MetadataJson = null);
@@ -254,11 +133,6 @@ public sealed record UpdateAbilityRequest(
     int? TriggerKind,
     int? TargetSelectorKind,
     string? AnimationCueId,
-    string? IconAssetRef,
-    string? StatusIconAssetRef,
-    string? VfxCueId,
-    string? AudioCueId,
-    string? UiColorHex,
     string? TooltipSummary,
     string? ConditionsJson,
     string? MetadataJson);

@@ -23,8 +23,6 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
     public DbSet<TargetSelectorKindDefinition> TargetSelectorKindDefinitions { get; set; } = null!;
     public DbSet<EffectKindDefinition> EffectKindDefinitions { get; set; } = null!;
     public DbSet<StatusEffectKindDefinition> StatusEffectKindDefinitions { get; set; } = null!;
-    public DbSet<CardVisualProfileTemplate> CardVisualProfileTemplates { get; set; } = null!;
-    public DbSet<CardVisualProfileAssignment> CardVisualProfileAssignments { get; set; } = null!;
     public DbSet<AuditLog> AuditLogs { get; set; } = null!;
     public DbSet<MatchAction> MatchActions { get; set; } = null!;
 
@@ -217,13 +215,10 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             e.Property(x => x.DefaultAttackSelector).HasColumnName("default_attack_selector");
             e.Property(x => x.TurnsUntilCanAttack).HasColumnName("turns_until_can_attack");
             e.Property(x => x.IsLimited).HasColumnName("is_limited");
-            e.Property(x => x.BattlePresentationJson).HasColumnName("battle_presentation_json").HasColumnType("jsonb");
-            e.Property(x => x.VisualProfilesJson).HasColumnName("visual_profiles_json").HasColumnType("jsonb");
             e.Property(x => x.CreatedAt).HasColumnName("created_at");
             e.Property(x => x.UpdatedAt).HasColumnName("updated_at");
             e.HasIndex(x => x.CardId).IsUnique();
             e.HasMany(x => x.CardAbilities).WithOne(ca => ca.CardDefinition).HasForeignKey(ca => ca.CardDefinitionId);
-            e.HasMany(x => x.VisualProfileAssignments).WithOne(x => x.CardDefinition).HasForeignKey(x => x.CardDefinitionId);
         });
 
         modelBuilder.Entity<AbilityDefinition>(e =>
@@ -238,11 +233,6 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             e.Property(x => x.TriggerKind).HasColumnName("trigger_kind");
             e.Property(x => x.TargetSelectorKind).HasColumnName("target_selector_kind");
             e.Property(x => x.AnimationCueId).HasColumnName("animation_cue_id").HasMaxLength(128);
-            e.Property(x => x.IconAssetRef).HasColumnName("icon_asset_ref").HasMaxLength(255);
-            e.Property(x => x.StatusIconAssetRef).HasColumnName("status_icon_asset_ref").HasMaxLength(255);
-            e.Property(x => x.VfxCueId).HasColumnName("vfx_cue_id").HasMaxLength(128);
-            e.Property(x => x.AudioCueId).HasColumnName("audio_cue_id").HasMaxLength(128);
-            e.Property(x => x.UiColorHex).HasColumnName("ui_color_hex").HasMaxLength(16);
             e.Property(x => x.TooltipSummary).HasColumnName("tooltip_summary").HasMaxLength(512);
             e.Property(x => x.ConditionsJson).HasColumnName("conditions_json").HasColumnType("jsonb");
             e.Property(x => x.MetadataJson).HasColumnName("metadata_json").HasColumnType("jsonb");
@@ -357,45 +347,9 @@ public sealed class AppDbContext(DbContextOptions<AppDbContext> options) : DbCon
             e.Property(x => x.DisplayName).HasColumnName("display_name").HasMaxLength(128);
             e.Property(x => x.Description).HasColumnName("description").HasMaxLength(1024);
             e.Property(x => x.Category).HasColumnName("category").HasMaxLength(64);
-            e.Property(x => x.IconAssetRef).HasColumnName("icon_asset_ref").HasMaxLength(255);
-            e.Property(x => x.VfxCueId).HasColumnName("vfx_cue_id").HasMaxLength(128);
-            e.Property(x => x.UiColorHex).HasColumnName("ui_color_hex").HasMaxLength(16);
             e.Property(x => x.MetadataJson).HasColumnName("metadata_json").HasColumnType("jsonb");
             e.HasIndex(x => x.Key).IsUnique();
             e.HasData(AuthoringDefinitions.StatusEffectKinds);
-        });
-
-        modelBuilder.Entity<CardVisualProfileTemplate>(e =>
-        {
-            e.ToTable("card_visual_profile_templates");
-            e.HasKey(x => x.Id);
-            e.Property(x => x.Id).HasColumnName("id");
-            e.Property(x => x.ProfileKey).HasColumnName("profile_key").HasMaxLength(128);
-            e.Property(x => x.DisplayName).HasColumnName("display_name").HasMaxLength(128);
-            e.Property(x => x.Description).HasColumnName("description").HasMaxLength(1024);
-            e.Property(x => x.IsActive).HasColumnName("is_active");
-            e.Property(x => x.LayersJson).HasColumnName("layers_json").HasColumnType("jsonb");
-            e.Property(x => x.MetadataJson).HasColumnName("metadata_json").HasColumnType("jsonb");
-            e.Property(x => x.CreatedAt).HasColumnName("created_at");
-            e.Property(x => x.UpdatedAt).HasColumnName("updated_at");
-            e.HasIndex(x => x.ProfileKey).IsUnique();
-        });
-
-        modelBuilder.Entity<CardVisualProfileAssignment>(e =>
-        {
-            e.ToTable("card_visual_profile_assignments");
-            e.HasKey(x => x.Id);
-            e.Property(x => x.Id).HasColumnName("id");
-            e.Property(x => x.CardDefinitionId).HasColumnName("card_definition_id");
-            e.Property(x => x.TemplateId).HasColumnName("template_id");
-            e.Property(x => x.IsDefault).HasColumnName("is_default");
-            e.Property(x => x.OverrideDisplayName).HasColumnName("override_display_name").HasMaxLength(128);
-            e.Property(x => x.OverrideLayersJson).HasColumnName("override_layers_json").HasColumnType("jsonb");
-            e.Property(x => x.MetadataJson).HasColumnName("metadata_json").HasColumnType("jsonb");
-            e.Property(x => x.CreatedAt).HasColumnName("created_at");
-            e.Property(x => x.UpdatedAt).HasColumnName("updated_at");
-            e.HasIndex(x => new { x.CardDefinitionId, x.TemplateId }).IsUnique();
-            e.HasOne(x => x.Template).WithMany().HasForeignKey(x => x.TemplateId).OnDelete(DeleteBehavior.Cascade);
         });
 
         modelBuilder.Entity<AuditLog>(e =>

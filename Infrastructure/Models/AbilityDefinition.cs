@@ -10,11 +10,6 @@ public sealed class AbilityDefinition
     public int TriggerKind { get; set; } // TriggerKind enum: OnPlay, OnTurnStart, OnTurnEnd, OnBattlePhase
     public int TargetSelectorKind { get; set; } // TargetSelectorKind enum
     public string AnimationCueId { get; set; } = string.Empty;
-    public string? IconAssetRef { get; set; }
-    public string? StatusIconAssetRef { get; set; }
-    public string? VfxCueId { get; set; }
-    public string? AudioCueId { get; set; }
-    public string? UiColorHex { get; set; }
     public string? TooltipSummary { get; set; }
     public string ConditionsJson { get; set; } = "{}";
     public string MetadataJson { get; set; } = "{}";

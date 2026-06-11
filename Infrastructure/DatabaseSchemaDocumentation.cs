@@ -21,9 +21,7 @@ public static class DatabaseSchemaDocumentation
             Col("allowed_row", "Placement rule. 0 FrontOnly, 1 BackOnly, 2 Flexible.", "2"),
             Col("default_attack_selector", "Legacy/default selector for authored effects. Normal attack targeting is resolved from unit_type and current slot.", "1"),
             Col("turns_until_can_attack", "How many owner turns the card waits before attacking unless Haste applies.", "1"),
-            Col("is_limited", "Designer flag for limited/special cards.", "false"),
-            Col("battle_presentation_json", "Materialized attack animation hints sent to client catalog.", "{\"AttackDeliveryType\":\"melee\"}"),
-            Col("visual_profiles_json", "Materialized visual profiles sent to client catalog. Templates/assignments can regenerate this.", "[{\"ProfileKey\":\"hand-default\"}]")
+            Col("is_limited", "Designer flag for limited/special cards.", "false")
         }),
         Table("abilities", "Reusable ability definitions. Cards attach abilities through card_abilities.", new[]
         {
@@ -32,11 +30,6 @@ public static class DatabaseSchemaDocumentation
             Col("trigger_kind", "FK to ability_trigger_kind_definitions. When the server evaluates the ability.", "3 = on_battle_phase"),
             Col("target_selector_kind", "FK to target_selector_kind_definitions. Default target selection.", "1 = frontline_first"),
             Col("animation_cue_id", "Client animation cue emitted with ordered battle events.", "skill_poison_strike"),
-            Col("icon_asset_ref", "Ability icon used in card UI ability badges.", "abilities/poison"),
-            Col("status_icon_asset_ref", "Optional status/debuff icon this ability tends to create.", "status/poisoned"),
-            Col("vfx_cue_id", "Optional ability VFX cue for UI or battle animation.", "vfx_poison_splash"),
-            Col("audio_cue_id", "Optional ability audio cue.", "sfx_poison"),
-            Col("ui_color_hex", "Optional UI accent color.", "#62B357"),
             Col("tooltip_summary", "Short player-facing tooltip summary.", "Poisons damaged enemies."),
             Col("conditions_json", "Future/extensible server-side conditions object.", "{}"),
             Col("metadata_json", "Flexible metadata for authoring/client UI. Does not replace engine logic.", "{\"normalAttackModifier\":true}")
@@ -83,28 +76,7 @@ public static class DatabaseSchemaDocumentation
             Col("id", "Numeric id used by runtime StatusEffectKind.", "0"),
             Col("key", "Stable readable key.", "poison"),
             Col("display_name", "Client indicator label.", "Poisoned"),
-            Col("category", "buff, debuff, cooldown, internal.", "debuff"),
-            Col("icon_asset_ref", "Default icon for current status indicators.", "status/poisoned"),
-            Col("vfx_cue_id", "Default VFX cue for status apply/tick.", "vfx_status_poison"),
-            Col("ui_color_hex", "Default UI accent color.", "#62B357")
-        }),
-        Table("card_visual_profile_templates", "Reusable visual profile templates independent from cards. Example: hand-default, played-default, reward-legendary.", new[]
-        {
-            Col("profile_key", "Stable reusable template key.", "played-default"),
-            Col("display_name", "Authoring/UI name.", "Played Default"),
-            Col("description", "What surface/layer composition this template represents.", "Normal board card frame and art crop."),
-            Col("is_active", "Whether authors should use this template.", "true"),
-            Col("layers_json", "Template layer stack. Assignments materialize this into cards.visual_profiles_json.", "[{\"Surface\":\"played\",\"Layer\":\"frame\"}]"),
-            Col("metadata_json", "Extra authoring/client metadata.", "{\"surface\":\"played\"}")
-        }),
-        Table("card_visual_profile_assignments", "Assigns reusable visual profile templates to cards and materializes current client-facing visualProfiles.", new[]
-        {
-            Col("card_definition_id", "FK to cards.id.", "card db id"),
-            Col("template_id", "FK to card_visual_profile_templates.id.", "template db id"),
-            Col("is_default", "Whether this assigned profile is default for the card.", "true"),
-            Col("override_display_name", "Optional per-card profile display name override.", "Alloy Played Default"),
-            Col("override_layers_json", "Optional per-card layer override when a template needs one-off art refs.", "[...]"),
-            Col("metadata_json", "Assignment metadata.", "{\"notes\":\"uses special crop\"}")
+            Col("category", "buff, debuff, cooldown, internal.", "debuff")
         })
     };
 

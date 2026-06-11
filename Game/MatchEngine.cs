@@ -153,20 +153,6 @@ public sealed record ServerAbilityDefinition(
     string? ConditionsJson = null,
     string? MetadataJson = null);
 
-public sealed record ServerCardVisualLayer(
-    string Surface,
-    string Layer,
-    string SourceKind,
-    string AssetRef,
-    int SortOrder,
-    string? MetadataJson);
-
-public sealed record ServerCardVisualProfile(
-    string ProfileKey,
-    string DisplayName,
-    bool IsDefault,
-    IReadOnlyList<ServerCardVisualLayer> Layers);
-
 public sealed record ServerCardDefinition(
     string CardId,
     string DisplayName,
@@ -182,11 +168,7 @@ public sealed record ServerCardDefinition(
     AllowedRow AllowedRow,
     TargetSelectorKind DefaultAttackSelector,
     int TurnsUntilCanAttack,
-    IReadOnlyList<ServerAbilityDefinition> Abilities,
-    int AttackMotionLevel = 0,
-    int AttackShakeLevel = 0,
-    string? AttackDeliveryType = null,
-    IReadOnlyList<ServerCardVisualProfile>? VisualProfiles = null);
+    IReadOnlyList<ServerAbilityDefinition> Abilities);
 
 public sealed record RuntimeHandCard(string RuntimeHandKey, ServerCardDefinition Definition);
 
@@ -257,9 +239,6 @@ public sealed record BoardCardSnapshot(
     int CurrentHealth,
     int MaxHealth,
     int Armor,
-    int AttackMotionLevel,
-    int AttackShakeLevel,
-    string? AttackDeliveryType,
     IReadOnlyList<StatusEffectSnapshot> StatusEffects,
     BoardSlot Slot);
 
@@ -625,9 +604,6 @@ public sealed class MatchEngine
                             pair.Value.CurrentHealth,
                             pair.Value.MaxHealth,
                             pair.Value.Armor,
-                            pair.Value.Definition.AttackMotionLevel,
-                            pair.Value.Definition.AttackShakeLevel,
-                            pair.Value.Definition.AttackDeliveryType,
                             pair.Value.StatusEffects.Select(status => new StatusEffectSnapshot(
                                 status.Kind,
                                 status.Amount,

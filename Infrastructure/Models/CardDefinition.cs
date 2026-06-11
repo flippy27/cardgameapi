@@ -18,12 +18,9 @@ public sealed class CardDefinition
     public int DefaultAttackSelector { get; set; } // TargetSelectorKind
     public int TurnsUntilCanAttack { get; set; } = 1;
     public bool IsLimited { get; set; } = false;
-    public string BattlePresentationJson { get; set; } = "{}";
-    public string VisualProfilesJson { get; set; } = "[]";
 
     // Navigation
     public ICollection<CardAbilityDefinition> CardAbilities { get; set; } = new List<CardAbilityDefinition>();
-    public ICollection<CardVisualProfileAssignment> VisualProfileAssignments { get; set; } = new List<CardVisualProfileAssignment>();
     public ICollection<CardCraftingRequirement> CraftingRequirements { get; set; } = new List<CardCraftingRequirement>();
 
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;

@@ -24,8 +24,6 @@ public sealed class DbCardCatalogService(AppDbContext dbContext) : ICardCatalogS
 
         foreach (var card in cards)
         {
-            var battlePresentation = DeserializeBattlePresentation(card.BattlePresentationJson);
-            var visualProfiles = DeserializeVisualProfiles(card.VisualProfilesJson);
             var abilities = card.CardAbilities
                 .OrderBy(ca => ca.Sequence)
                 .Select(ca => ca.AbilityDefinition)
@@ -62,11 +60,7 @@ public sealed class DbCardCatalogService(AppDbContext dbContext) : ICardCatalogS
                 (AllowedRow)card.AllowedRow,
                 (TargetSelectorKind)card.DefaultAttackSelector,
                 card.TurnsUntilCanAttack,
-                abilities,
-                battlePresentation?.AttackMotionLevel ?? 0,
-                battlePresentation?.AttackShakeLevel ?? 0,
-                battlePresentation?.AttackDeliveryType,
-                visualProfiles
+                abilities
             );
             _catalog[card.CardId] = def;
         }
@@ -84,35 +78,4 @@ public sealed class DbCardCatalogService(AppDbContext dbContext) : ICardCatalogS
     }
 
     public void InvalidateCache() => _catalog = null;
-
-    private static BattlePresentationDto? DeserializeBattlePresentation(string json)
-    {
-        if (string.IsNullOrWhiteSpace(json) || json == "{}")
-        {
-            return null;
-        }
-
-        return JsonSerializer.Deserialize<BattlePresentationDto>(json);
-    }
-
-    private static IReadOnlyList<ServerCardVisualProfile> DeserializeVisualProfiles(string json)
-    {
-        if (string.IsNullOrWhiteSpace(json) || json == "[]")
-        {
-            return Array.Empty<ServerCardVisualProfile>();
-        }
-
-        var profiles = JsonSerializer.Deserialize<List<CardVisualProfileDto>>(json) ?? new List<CardVisualProfileDto>();
-        return profiles.Select(profile => new ServerCardVisualProfile(
-            profile.ProfileKey,
-            profile.DisplayName,
-            profile.IsDefault,
-            profile.Layers.Select(layer => new ServerCardVisualLayer(
-                layer.Surface,
-                layer.Layer,
-                layer.SourceKind,
-                layer.AssetRef,
-                layer.SortOrder,
-                layer.MetadataJson)).ToArray())).ToArray();
-    }
 }

@@ -50,11 +50,6 @@ public sealed class AbilitiesController(AppDbContext dbContext) : ControllerBase
             TriggerKind = request.TriggerKind,
             TargetSelectorKind = request.TargetSelectorKind,
             AnimationCueId = request.AnimationCueId ?? string.Empty,
-            IconAssetRef = request.IconAssetRef,
-            StatusIconAssetRef = request.StatusIconAssetRef,
-            VfxCueId = request.VfxCueId,
-            AudioCueId = request.AudioCueId,
-            UiColorHex = request.UiColorHex,
             TooltipSummary = request.TooltipSummary,
             ConditionsJson = NormalizeJson(request.ConditionsJson),
             MetadataJson = NormalizeJson(request.MetadataJson)
@@ -96,11 +91,6 @@ public sealed class AbilitiesController(AppDbContext dbContext) : ControllerBase
         if (request.TriggerKind.HasValue) ability.TriggerKind = request.TriggerKind.Value;
         if (request.TargetSelectorKind.HasValue) ability.TargetSelectorKind = request.TargetSelectorKind.Value;
         if (request.AnimationCueId != null) ability.AnimationCueId = request.AnimationCueId;
-        if (request.IconAssetRef != null) ability.IconAssetRef = request.IconAssetRef;
-        if (request.StatusIconAssetRef != null) ability.StatusIconAssetRef = request.StatusIconAssetRef;
-        if (request.VfxCueId != null) ability.VfxCueId = request.VfxCueId;
-        if (request.AudioCueId != null) ability.AudioCueId = request.AudioCueId;
-        if (request.UiColorHex != null) ability.UiColorHex = request.UiColorHex;
         if (request.TooltipSummary != null) ability.TooltipSummary = request.TooltipSummary;
         if (request.ConditionsJson != null) ability.ConditionsJson = NormalizeJson(request.ConditionsJson);
         if (request.MetadataJson != null) ability.MetadataJson = NormalizeJson(request.MetadataJson);
@@ -233,11 +223,6 @@ public sealed class AbilitiesController(AppDbContext dbContext) : ControllerBase
             ability.TriggerKind,
             ability.TargetSelectorKind,
             ability.AnimationCueId,
-            ability.IconAssetRef,
-            ability.StatusIconAssetRef,
-            ability.VfxCueId,
-            ability.AudioCueId,
-            ability.UiColorHex,
             ability.TooltipSummary,
             ability.ConditionsJson,
             ability.MetadataJson,

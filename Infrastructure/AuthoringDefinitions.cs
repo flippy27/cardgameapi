@@ -36,10 +36,10 @@ public static class AuthoringDefinitions
 
     public static readonly StatusEffectKindDefinition[] StatusEffectKinds =
     {
-        new() { Id = 0, Key = "poison", DisplayName = "Poisoned", Description = "Debuff. Deals damage over time at battle-start processing.", Category = "debuff", IconAssetRef = "status/poisoned", VfxCueId = "vfx_status_poison", UiColorHex = "#62B357", MetadataJson = "{\"clientIndicator\":\"poisoned\"}" },
-        new() { Id = 1, Key = "stun", DisplayName = "Stunned", Description = "Debuff. The affected card skips its next attack, then the status is consumed.", Category = "debuff", IconAssetRef = "status/stunned", VfxCueId = "vfx_status_stun", UiColorHex = "#F2D14B", MetadataJson = "{\"clientIndicator\":\"stunned\"}" },
-        new() { Id = 2, Key = "shield", DisplayName = "Shielded", Description = "Buff. Blocks incoming damage charges before health/armor are modified.", Category = "buff", IconAssetRef = "status/shielded", VfxCueId = "vfx_status_shield", UiColorHex = "#61A8FF", MetadataJson = "{\"clientIndicator\":\"shielded\"}" },
-        new() { Id = 3, Key = "enrage_cooldown", DisplayName = "Enrage Cooldown", Description = "Internal debuff/cooldown. Applied after enrage attacks twice; card skips its next attack.", Category = "cooldown", IconAssetRef = "status/enrage_cooldown", VfxCueId = "vfx_status_enrage_cooldown", UiColorHex = "#FF6A3D", MetadataJson = "{\"clientIndicator\":\"enrageCooldown\"}" }
+        new() { Id = 0, Key = "poison", DisplayName = "Poisoned", Description = "Debuff. Deals damage over time at battle-start processing.", Category = "debuff", MetadataJson = "{\"clientIndicator\":\"poisoned\"}" },
+        new() { Id = 1, Key = "stun", DisplayName = "Stunned", Description = "Debuff. The affected card skips its next attack, then the status is consumed.", Category = "debuff", MetadataJson = "{\"clientIndicator\":\"stunned\"}" },
+        new() { Id = 2, Key = "shield", DisplayName = "Shielded", Description = "Buff. Blocks incoming damage charges before health/armor are modified.", Category = "buff", MetadataJson = "{\"clientIndicator\":\"shielded\"}" },
+        new() { Id = 3, Key = "enrage_cooldown", DisplayName = "Enrage Cooldown", Description = "Internal debuff/cooldown. Applied after enrage attacks twice; card skips its next attack.", Category = "cooldown", MetadataJson = "{\"clientIndicator\":\"enrageCooldown\"}" }
     };
 
     public static readonly ItemTypeDefinition[] ItemTypes =
