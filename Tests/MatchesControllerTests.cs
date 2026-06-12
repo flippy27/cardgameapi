@@ -14,14 +14,15 @@ namespace CardDuel.ServerApi.Tests;
 public sealed class MatchesControllerTests
 {
     [Fact]
-    public void PlayCard_WhenActionFails_ReturnsParseableGameActionError()
+    public async Task PlayCard_WhenActionFails_ReturnsParseableGameActionError()
     {
         var options = new DbContextOptionsBuilder<AppDbContext>()
             .UseInMemoryDatabase(Guid.NewGuid().ToString())
             .Options;
         using var dbContext = new AppDbContext(options);
 
-        var controller = new MatchesController(new ThrowingMatchService(), dbContext)
+        // hubContext is unused on the failure path (the action throws before any broadcast).
+        var controller = new MatchesController(new ThrowingMatchService(), dbContext, matchHub: null!)
         {
             ControllerContext = new ControllerContext
             {
@@ -35,7 +36,7 @@ public sealed class MatchesControllerTests
             }
         };
 
-        var response = controller.PlayCard("match1", new PlayCardRequest("match1", "player1", "runtime-1", 0));
+        var response = await controller.PlayCard("match1", new PlayCardRequest("match1", "player1", "runtime-1", 0));
 
         var badRequest = Assert.IsType<BadRequestObjectResult>(response.Result);
         var payload = Assert.IsType<GameActionErrorDto>(badRequest.Value);

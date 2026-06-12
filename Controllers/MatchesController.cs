@@ -2,10 +2,12 @@ using System.Security.Claims;
 using System.Text.Json;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using CardDuel.ServerApi.Contracts;
 using CardDuel.ServerApi.Services;
 using CardDuel.ServerApi.Game;
+using CardDuel.ServerApi.Hubs;
 using CardDuel.ServerApi.Infrastructure;
 
 namespace CardDuel.ServerApi.Controllers;
@@ -13,7 +15,7 @@ namespace CardDuel.ServerApi.Controllers;
 [ApiController]
 [Authorize]
 [Route("api/v1/matches")]
-public sealed class MatchesController(IMatchService matchService, AppDbContext dbContext) : ControllerBase
+public sealed class MatchesController(IMatchService matchService, AppDbContext dbContext, IHubContext<MatchHub> matchHub) : ControllerBase
 {
     [HttpGet]
     public IActionResult List() => Ok(matchService.ListMatches());
@@ -54,38 +56,38 @@ public sealed class MatchesController(IMatchService matchService, AppDbContext d
     }
 
     [HttpPost("{matchId}/ready")]
-    public ActionResult<MatchSnapshot> SetReady(string matchId, SetReadyRequest request)
+    public Task<ActionResult<MatchSnapshot>> SetReady(string matchId, SetReadyRequest request)
     {
         EnsurePlayer(request.PlayerId);
-        return ExecuteMatchAction(() => matchService.SetReady(matchId, request.PlayerId, request.IsReady));
+        return ExecuteMatchActionAsync(matchId, () => matchService.SetReady(matchId, request.PlayerId, request.IsReady));
     }
 
     [HttpPost("{matchId}/play")]
-    public ActionResult<MatchSnapshot> PlayCard(string matchId, PlayCardRequest request)
+    public Task<ActionResult<MatchSnapshot>> PlayCard(string matchId, PlayCardRequest request)
     {
         EnsurePlayer(request.PlayerId);
-        return ExecuteMatchAction(() => matchService.PlayCard(matchId, request.PlayerId, request.RuntimeHandKey, request.SlotIndex));
+        return ExecuteMatchActionAsync(matchId, () => matchService.PlayCard(matchId, request.PlayerId, request.RuntimeHandKey, request.SlotIndex));
     }
 
     [HttpPost("{matchId}/end-turn")]
-    public ActionResult<MatchSnapshot> EndTurn(string matchId, EndTurnRequest request)
+    public Task<ActionResult<MatchSnapshot>> EndTurn(string matchId, EndTurnRequest request)
     {
         EnsurePlayer(request.PlayerId);
-        return ExecuteMatchAction(() => matchService.EndTurn(matchId, request.PlayerId));
+        return ExecuteMatchActionAsync(matchId, () => matchService.EndTurn(matchId, request.PlayerId));
     }
 
     [HttpPost("{matchId}/destroy-card")]
-    public ActionResult<MatchSnapshot> DestroyCard(string matchId, DestroyCardRequest request)
+    public Task<ActionResult<MatchSnapshot>> DestroyCard(string matchId, DestroyCardRequest request)
     {
         EnsurePlayer(request.PlayerId);
-        return ExecuteMatchAction(() => matchService.DestroyCard(matchId, request.PlayerId, request.RuntimeCardId));
+        return ExecuteMatchActionAsync(matchId, () => matchService.DestroyCard(matchId, request.PlayerId, request.RuntimeCardId));
     }
 
     [HttpPost("{matchId}/forfeit")]
-    public ActionResult<MatchSnapshot> Forfeit(string matchId, ForfeitRequest request)
+    public Task<ActionResult<MatchSnapshot>> Forfeit(string matchId, ForfeitRequest request)
     {
         EnsurePlayer(request.PlayerId);
-        return ExecuteMatchAction(() => matchService.Forfeit(matchId, request.PlayerId));
+        return ExecuteMatchActionAsync(matchId, () => matchService.Forfeit(matchId, request.PlayerId));
     }
 
     [HttpPost("{matchId}/complete")]
@@ -115,11 +117,15 @@ public sealed class MatchesController(IMatchService matchService, AppDbContext d
         }
     }
 
-    private ActionResult<MatchSnapshot> ExecuteMatchAction(Func<MatchSnapshot> action)
+    // Runs a state-changing match action, then pushes the fresh per-seat snapshots to every connected
+    // SignalR client (same dispatch the hub uses). Without this, actions taken over HTTP — e.g. the
+    // single-player AI seat, or a client on the HTTP fallback — never reach the opponent's live view.
+    private async Task<ActionResult<MatchSnapshot>> ExecuteMatchActionAsync(string matchId, Func<MatchSnapshot> action)
     {
+        MatchSnapshot snapshot;
         try
         {
-            return Ok(action());
+            snapshot = action();
         }
         catch (GameActionException exception)
         {
@@ -128,6 +134,24 @@ public sealed class MatchesController(IMatchService matchService, AppDbContext d
         catch (InvalidOperationException exception)
         {
             return BadRequest(new { message = exception.Message });
+        }
+
+        await BroadcastMatchAsync(matchId);
+        return Ok(snapshot);
+    }
+
+    private async Task BroadcastMatchAsync(string matchId)
+    {
+        try
+        {
+            foreach (var dispatch in matchService.BuildDispatches(matchId))
+            {
+                await matchHub.Clients.Client(dispatch.ConnectionId).SendAsync("MatchSnapshot", dispatch.Snapshot);
+            }
+        }
+        catch
+        {
+            // Broadcasting is best-effort; the action already succeeded and is returned to the caller.
         }
     }
 }
