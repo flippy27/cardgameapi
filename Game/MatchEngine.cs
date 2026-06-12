@@ -1054,6 +1054,19 @@ public sealed class MatchEngine
         return card?.Definition.Abilities.Any(ability => ability.AbilityId.Equals(abilityId, StringComparison.OrdinalIgnoreCase)) == true;
     }
 
+    // Reads the configured amount for a combat-modifier ability (e.g. execute threshold,
+    // reflection damage) from its first matching effect; falls back to a default when absent.
+    private int GetAbilityAmount(RuntimeBoardCard? card, string abilityId, EffectKind kind, int fallback)
+    {
+        var amount = card?.Definition.Abilities
+            .Where(ability => ability.AbilityId.Equals(abilityId, StringComparison.OrdinalIgnoreCase))
+            .SelectMany(ability => ability.Effects)
+            .Where(effect => effect.Kind == kind)
+            .Select(effect => (int?)effect.Amount)
+            .FirstOrDefault();
+        return amount ?? fallback;
+    }
+
     private static bool IsNormalAttackModifierAbility(ServerAbilityDefinition ability)
     {
         return ability.MetadataJson?.Contains("normalAttackModifier", StringComparison.OrdinalIgnoreCase) == true
@@ -1112,25 +1125,64 @@ public sealed class MatchEngine
         }
 
         var ignoreArmor = HasAbility(attacker, "trample");
+        var attackDamage = attacker.Attack;
+
+        // Execute: a low-health target is finished off outright.
+        if (HasAbility(attacker, "execute") && !target.IsDead)
+        {
+            var threshold = GetAbilityAmount(attacker, "execute", EffectKind.Execute, 3);
+            if (target.CurrentHealth <= threshold)
+            {
+                AddBattleEvent("skill_begin", attacker.OwnerSeatIndex, attacker.RuntimeId, target.OwnerSeatIndex, target.RuntimeId, "execute", EffectKind.Execute, threshold, null, null, null, null, null, null, $"{attacker.Definition.DisplayName} moved to execute {target.Definition.DisplayName}.");
+                attackDamage = target.CurrentHealth + Math.Max(0, target.Armor);
+                ignoreArmor = true;
+            }
+        }
+
         var targetAttack = Math.Max(0, target.Attack);
         var targetCounterIgnoresArmor = HasAbility(target, "trample");
         AddBattleEvent("card_attack", attacker.OwnerSeatIndex, attacker.RuntimeId, target.OwnerSeatIndex, target.RuntimeId, null, null, attacker.Attack, null, null, null, null, null, null, $"{attacker.Definition.DisplayName} attacked {target.Definition.DisplayName}.");
-        var result = DealDamage(attacker.RuntimeId, target.RuntimeId, attacker.Attack, ignoreArmor, null, null, attacker.OwnerSeatIndex);
+        var result = DealDamage(attacker.RuntimeId, target.RuntimeId, attackDamage, ignoreArmor, null, null, attacker.OwnerSeatIndex);
         ApplyCombatContactEffects(attacker, target, result);
+
+        // Reflection (thorns): the struck defender deals fixed damage back to the attacker.
+        if (!DuelEnded && !attacker.IsDead && !target.IsDead && result.HealthDamage + result.ArmorDamage > 0 && HasAbility(target, "reflection"))
+        {
+            var reflect = GetAbilityAmount(target, "reflection", EffectKind.Reflection, 2);
+            if (reflect > 0)
+            {
+                AddBattleEvent("skill_begin", target.OwnerSeatIndex, target.RuntimeId, attacker.OwnerSeatIndex, attacker.RuntimeId, "reflection", EffectKind.Reflection, reflect, null, null, null, null, null, null, $"{target.Definition.DisplayName} reflected damage to {attacker.Definition.DisplayName}.");
+                DealDamage(target.RuntimeId, attacker.RuntimeId, reflect, ignoreArmor: false, "reflection", EffectKind.Reflection, target.OwnerSeatIndex);
+            }
+        }
 
         if (DuelEnded)
         {
             return;
         }
 
-        if (targetAttack <= 0)
+        if (targetAttack > 0)
         {
-            return;
+            AddBattleEvent("card_counterattack", target.OwnerSeatIndex, target.RuntimeId, attacker.OwnerSeatIndex, attacker.RuntimeId, null, null, targetAttack, null, null, null, null, null, null, $"{target.Definition.DisplayName} struck back at {attacker.Definition.DisplayName}.");
+            var counterResult = DealDamage(target.RuntimeId, attacker.RuntimeId, targetAttack, targetCounterIgnoresArmor, null, null, target.OwnerSeatIndex);
+            ApplyCombatContactEffects(target, attacker, counterResult);
         }
 
-        AddBattleEvent("card_counterattack", target.OwnerSeatIndex, target.RuntimeId, attacker.OwnerSeatIndex, attacker.RuntimeId, null, null, targetAttack, null, null, null, null, null, null, $"{target.Definition.DisplayName} struck back at {attacker.Definition.DisplayName}.");
-        var counterResult = DealDamage(target.RuntimeId, attacker.RuntimeId, targetAttack, targetCounterIgnoresArmor, null, null, target.OwnerSeatIndex);
-        ApplyCombatContactEffects(target, attacker, counterResult);
+        // Cleave: splash the attacker's damage onto the enemy's remaining units.
+        if (!DuelEnded && !attacker.IsDead && HasAbility(attacker, "cleave") && attacker.Attack > 0)
+        {
+            foreach (var other in _seats[enemySeatIndex].Board.Values
+                         .Where(card => card != null && !card.IsDead && card.RuntimeId != target.RuntimeId)
+                         .ToArray())
+            {
+                AddBattleEvent("skill_begin", attacker.OwnerSeatIndex, attacker.RuntimeId, other!.OwnerSeatIndex, other.RuntimeId, "cleave", EffectKind.Cleave, attacker.Attack, null, null, null, null, null, null, $"{attacker.Definition.DisplayName} cleaved {other.Definition.DisplayName}.");
+                DealDamage(attacker.RuntimeId, other.RuntimeId, attacker.Attack, ignoreArmor: false, "cleave", EffectKind.Cleave, attacker.OwnerSeatIndex);
+                if (DuelEnded)
+                {
+                    break;
+                }
+            }
+        }
     }
 
     private void ApplyCombatContactEffects(RuntimeBoardCard source, RuntimeBoardCard target, DamageResult result)
@@ -1302,6 +1354,13 @@ public sealed class MatchEngine
         {
             target.CurrentHealth -= pending;
             healthDamage = pending;
+        }
+
+        // Last Stand: the first lethal blow leaves the unit clinging to 1 health.
+        if (target.IsDead && HasAbility(target, "last_stand") && target.ConsumedOneShotAbilityIds.Add("last_stand"))
+        {
+            target.CurrentHealth = 1;
+            AddBattleEvent("last_stand", null, null, target.OwnerSeatIndex, target.RuntimeId, "last_stand", EffectKind.LastStand, 0, hpBefore, target.CurrentHealth, armorBefore, target.Armor, null, null, $"{target.Definition.DisplayName} survived on its last stand.");
         }
 
         _logs.Add($"{sourceRuntimeId} hit {target.Definition.DisplayName} for {amount}.");

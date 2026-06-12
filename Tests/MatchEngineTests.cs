@@ -573,4 +573,148 @@ public class MatchEngineTests
         Assert.Null(engine.Seats[0].Board[BoardSlot.BackLeft]);
         Assert.Contains(engine.CreateSnapshotForSeat(0).BattleEvents, evt => evt.Kind == "card_destroyed");
     }
+
+    private static void StartDuel(MatchEngine engine, ServerCardDefinition[] cards)
+    {
+        engine.ReserveSeat("player1", "deck1", cards);
+        engine.ReserveSeat("player2", "deck2", cards);
+        engine.SetReady("player1", true);
+        engine.SetReady("player2", true);
+    }
+
+    private void Play(MatchEngine engine, string player, int seat, string cardId, BoardSlot slot)
+    {
+        engine.PlayCard(player, engine.Seats[seat].Hand.Single(card => card.Definition.CardId == cardId).RuntimeHandKey, slot);
+    }
+
+    [Fact]
+    public void BattlePhase_CleaveAlsoStrikesOtherEnemyUnits()
+    {
+        var engine = new MatchEngine("match1", "ABC123", QueueMode.Casual, TimeSpan.FromSeconds(20), CreateRules(initialDrawCount: 5));
+        var cleave = Ability("cleave", TriggerKind.OnBattlePhase, TargetSelectorKind.Self);
+        var cards = new[]
+        {
+            CreateCardWithAbilities("cleaver", "Cleaver", new[] { cleave }, attack: 3, health: 10),
+            CreateCard("d_front", "D Front", mana: 1, attack: 0, health: 5),
+            CreateCard("d_left", "D Left", mana: 1, attack: 0, health: 5, unitType: UnitType.Ranged)
+        };
+
+        StartDuel(engine, cards);
+        Play(engine, "player1", 0, "cleaver", BoardSlot.Front);
+        engine.EndTurn("player1");
+        Play(engine, "player2", 1, "d_front", BoardSlot.Front);
+        Play(engine, "player2", 1, "d_left", BoardSlot.BackLeft);
+        engine.EndTurn("player2");
+        engine.EndTurn("player1");
+
+        Assert.Equal(2, engine.Seats[1].Board[BoardSlot.Front]!.CurrentHealth);
+        Assert.Equal(2, engine.Seats[1].Board[BoardSlot.BackLeft]!.CurrentHealth);
+        Assert.Contains(engine.CreateSnapshotForSeat(0).BattleEvents, e => e.Kind == "skill_begin" && e.AbilityId == "cleave");
+    }
+
+    [Fact]
+    public void BattlePhase_ExecuteDestroysLowHealthTarget()
+    {
+        var engine = new MatchEngine("match1", "ABC123", QueueMode.Casual, TimeSpan.FromSeconds(20), CreateRules());
+        var execute = Ability("execute", TriggerKind.OnBattlePhase, TargetSelectorKind.Self,
+            new ServerEffectDefinition(EffectKind.Execute, 3));
+        var cards = new[]
+        {
+            CreateCardWithAbilities("executioner", "Executioner", new[] { execute }, attack: 1, health: 10),
+            CreateCard("victim", "Victim", mana: 1, attack: 0, health: 3)
+        };
+
+        StartDuel(engine, cards);
+        Play(engine, "player1", 0, "executioner", BoardSlot.Front);
+        engine.EndTurn("player1");
+        Play(engine, "player2", 1, "victim", BoardSlot.Front);
+        engine.EndTurn("player2");
+        engine.EndTurn("player1");
+
+        Assert.Null(engine.Seats[1].Board[BoardSlot.Front]);
+        Assert.Contains(engine.CreateSnapshotForSeat(0).BattleEvents, e => e.Kind == "skill_begin" && e.AbilityId == "execute");
+    }
+
+    [Fact]
+    public void BattlePhase_ReflectionDamagesTheAttacker()
+    {
+        var engine = new MatchEngine("match1", "ABC123", QueueMode.Casual, TimeSpan.FromSeconds(20), CreateRules());
+        var reflection = Ability("reflection", TriggerKind.OnBattlePhase, TargetSelectorKind.Self,
+            new ServerEffectDefinition(EffectKind.Reflection, 2));
+        var cards = new[]
+        {
+            CreateCard("striker", "Striker", mana: 1, attack: 3, health: 5),
+            CreateCardWithAbilities("thorns", "Thorns", new[] { reflection }, attack: 0, health: 10)
+        };
+
+        StartDuel(engine, cards);
+        Play(engine, "player1", 0, "striker", BoardSlot.Front);
+        engine.EndTurn("player1");
+        Play(engine, "player2", 1, "thorns", BoardSlot.Front);
+        engine.EndTurn("player2");
+        engine.EndTurn("player1");
+
+        Assert.Equal(3, engine.Seats[0].Board[BoardSlot.Front]!.CurrentHealth); // 5 - 2 reflected
+        Assert.Equal(7, engine.Seats[1].Board[BoardSlot.Front]!.CurrentHealth); // 10 - 3 struck
+        Assert.Contains(engine.CreateSnapshotForSeat(0).BattleEvents, e => e.Kind == "skill_begin" && e.AbilityId == "reflection");
+    }
+
+    [Fact]
+    public void BattlePhase_LastStandSurvivesFirstLethalHitOnce()
+    {
+        var engine = new MatchEngine("match1", "ABC123", QueueMode.Casual, TimeSpan.FromSeconds(20), CreateRules());
+        var lastStand = Ability("last_stand", TriggerKind.OnBattlePhase, TargetSelectorKind.Self);
+        var cards = new[]
+        {
+            CreateCard("bruiser", "Bruiser", mana: 1, attack: 10, health: 10),
+            CreateCardWithAbilities("survivor", "Survivor", new[] { lastStand }, attack: 0, health: 4)
+        };
+
+        StartDuel(engine, cards);
+        Play(engine, "player1", 0, "bruiser", BoardSlot.Front);
+        engine.EndTurn("player1");
+        Play(engine, "player2", 1, "survivor", BoardSlot.Front);
+        engine.EndTurn("player2");
+        engine.EndTurn("player1");
+
+        Assert.Equal(1, engine.Seats[1].Board[BoardSlot.Front]!.CurrentHealth);
+        Assert.Contains(engine.CreateSnapshotForSeat(0).BattleEvents, e => e.Kind == "last_stand");
+
+        // Second lethal hit: one-shot is consumed, so it dies this time.
+        engine.EndTurn("player2");
+        engine.EndTurn("player1");
+        Assert.Null(engine.Seats[1].Board[BoardSlot.Front]);
+    }
+
+    [Fact]
+    public void BattlePhase_RegenerateHealsSelfAtEndOfTurn()
+    {
+        var engine = new MatchEngine("match1", "ABC123", QueueMode.Casual, TimeSpan.FromSeconds(20), CreateRules());
+        // Regenerate is a turn-end utility (not a normal-attack modifier): heal self by 2.
+        var regenerate = new ServerAbilityDefinition(
+            "regenerate", "Regenerate", TriggerKind.OnTurnEnd, TargetSelectorKind.Self,
+            new[] { new ServerEffectDefinition(EffectKind.Heal, 2) }, SkillType.Utility);
+        // Ranged so that, parked in Front, it never attacks (no counterattack) — isolates regen.
+        var medic = new ServerCardDefinition(
+            "medic", "Medic", "", 1, 0, 6, 0, 0, 0, 0, (int)UnitType.Ranged, AllowedRow.Flexible,
+            TargetSelectorKind.FrontlineFirst, 1, new[] { regenerate });
+        var cards = new[]
+        {
+            medic,
+            CreateCard("hitter", "Hitter", mana: 1, attack: 2, health: 6)
+        };
+
+        StartDuel(engine, cards);
+        Play(engine, "player1", 0, "medic", BoardSlot.Front);
+        engine.EndTurn("player1");
+        Play(engine, "player2", 1, "hitter", BoardSlot.Front);
+        engine.EndTurn("player2"); // hitter just played, not ready yet
+        engine.EndTurn("player1");
+        engine.EndTurn("player2"); // hitter now ready: strikes medic for 2 -> medic at 4
+        engine.EndTurn("player1"); // medic blocked (ranged in front); turn-end regen heals +2 -> 6
+
+        Assert.Equal(6, engine.Seats[0].Board[BoardSlot.Front]!.CurrentHealth);
+        Assert.Contains(engine.CreateSnapshotForSeat(0).BattleEvents,
+            e => e.Kind == "heal" && e.AbilityId == "regenerate" && e.Amount == 2);
+    }
 }
