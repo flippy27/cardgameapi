@@ -416,9 +416,9 @@ w(",\n".join(rows) + ";")
 w("")
 
 # Default ruleset + matchmaking assignments
-w("-- Default ruleset (hero 20, mana 1->10, draw 4 +1/turn).")
+w("-- Default ruleset (hero 20, full 20 mana from turn 1 to match the client DuelRulesProfile, draw 4 +1/turn).")
 w("INSERT INTO game_rulesets (id, ruleset_key, display_name, description, is_active, is_default, starting_hero_health, max_hero_health, starting_mana, max_mana, mana_granted_per_turn, mana_grant_timing, initial_draw_count, cards_drawn_on_turn_start, starting_seat_index, created_at) VALUES")
-w("('ruleset-default', 'default', 'Default Rules', 'Default server ruleset for casual, ranked and private matches.', true, true, 20, 20, 1, 10, 1, 0, 4, 1, 0, NOW());")
+w("('ruleset-default', 'default', 'Default Rules', 'Default server ruleset for casual, ranked and private matches.', true, true, 20, 20, 20, 20, 20, 0, 4, 1, 0, NOW());")
 w("")
 w("INSERT INTO matchmaking_mode_ruleset_assignments (id, mode, ruleset_id, created_at) VALUES")
 w("('mmr-casual', 0, 'ruleset-default', NOW()),")
