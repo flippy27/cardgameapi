@@ -17,4 +17,6 @@ public sealed class GameActionException(string code, string message) : InvalidOp
     public static GameActionException BackOnlyCardRequired() => new("invalid_row_back_only", "This card can only be played in the back row.");
     public static GameActionException RuntimeCardNotFound() => new("runtime_card_not_found", "Board card runtime id was not found.");
     public static GameActionException CannotDestroyOpponentsCard() => new("cannot_destroy_opponents_card", "Players may only destroy their own in-play cards.");
+    public static GameActionException TargetRequired() => new("target_required", "This card requires a target unit to be played.");
+    public static GameActionException InvalidTarget() => new("invalid_target", "The selected target is not a valid in-play unit.");
 }

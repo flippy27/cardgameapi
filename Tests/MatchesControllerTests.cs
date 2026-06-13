@@ -52,7 +52,7 @@ public sealed class MatchesControllerTests
         public bool TryReconnect(string matchId, string playerId, string reconnectToken, out int seatIndex) => throw new NotImplementedException();
         public MatchSnapshot Connect(string matchId, string playerId, string reconnectToken, string connectionId) => throw new NotImplementedException();
         public MatchSnapshot SetReady(string matchId, string playerId, bool ready) => throw new NotImplementedException();
-        public MatchSnapshot PlayCard(string matchId, string playerId, string runtimeHandKey, int slotIndex) => throw GameActionException.NotEnoughMana();
+        public MatchSnapshot PlayCard(string matchId, string playerId, string runtimeHandKey, int slotIndex, string? targetRuntimeId = null) => throw GameActionException.NotEnoughMana();
         public MatchSnapshot EndTurn(string matchId, string playerId) => throw new NotImplementedException();
         public MatchSnapshot DestroyCard(string matchId, string playerId, string runtimeCardId) => throw new NotImplementedException();
         public MatchSnapshot Forfeit(string matchId, string playerId) => throw new NotImplementedException();

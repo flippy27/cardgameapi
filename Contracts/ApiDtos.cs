@@ -134,7 +134,8 @@ public sealed record PlayCardRequest(
     [Required] string MatchId,
     [Required] string PlayerId,
     [Required] string RuntimeHandKey,
-    [Range(0, 2)] int SlotIndex);
+    [Range(0, 2)] int SlotIndex,
+    string? TargetRuntimeId = null);
 
 public sealed record EndTurnRequest(
     [Required] string MatchId,

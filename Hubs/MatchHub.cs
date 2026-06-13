@@ -44,7 +44,7 @@ public sealed class MatchHub(IMatchService matchService, ILogger<MatchHub> logge
     public async Task<MatchSnapshot> PlayCard(PlayCardRequest request)
     {
         EnsurePlayer(request.PlayerId);
-        var snapshot = ExecuteMatchAction(() => matchService.PlayCard(request.MatchId, request.PlayerId, request.RuntimeHandKey, request.SlotIndex));
+        var snapshot = ExecuteMatchAction(() => matchService.PlayCard(request.MatchId, request.PlayerId, request.RuntimeHandKey, request.SlotIndex, request.TargetRuntimeId));
         await BroadcastMatch(request.MatchId);
         return snapshot;
     }

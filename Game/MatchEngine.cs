@@ -184,8 +184,25 @@ public sealed class RuntimeBoardCard
     public required int Armor { get; set; }
     public int SummonedTurnNumber { get; init; }
     public List<RuntimeStatusEffect> StatusEffects { get; } = new();
+    public List<RuntimeStatModifier> Modifiers { get; } = new();
     public HashSet<string> ConsumedOneShotAbilityIds { get; } = new(StringComparer.OrdinalIgnoreCase);
     public bool IsDead => CurrentHealth <= 0;
+}
+
+// A timed stat modifier applied by an Equipment card. Reverts the exact delta it applied
+// when it expires (after RemainingTurns end-of-turn ticks at the equipped unit's seat) or
+// is cleared wholesale when the equipped unit dies.
+public sealed class RuntimeStatModifier
+{
+    public required string EquipmentCardId { get; init; }
+    public required string DisplayName { get; init; }
+    public required int OwnerSeatIndex { get; init; }
+    public int AttackDelta { get; set; }
+    public int ArmorDelta { get; set; }
+    // RemainingTurns <= 0 means "until the equipped unit dies" (permanent while alive).
+    public required int RemainingTurns { get; set; }
+    public bool Permanent { get; init; }
+    public string? SourceRuntimeId { get; init; }
 }
 
 public sealed class RuntimeStatusEffect
@@ -456,13 +473,20 @@ public sealed class MatchEngine
             : $"Seat {seat.SeatIndex + 1} forfeited the match.");
     }
 
-    public void PlayCard(string playerId, string runtimeHandKey, BoardSlot slot)
+    public void PlayCard(string playerId, string runtimeHandKey, BoardSlot slot, string? targetRuntimeId = null)
     {
         EnsurePlayable(playerId);
 
         var seat = GetSeat(playerId);
         var card = seat.Hand.FirstOrDefault(x => x.RuntimeHandKey == runtimeHandKey)
             ?? throw GameActionException.CardNotFoundInHand();
+
+        var cardType = (CardType)card.Definition.CardType;
+        if (cardType != CardType.Unit)
+        {
+            PlayNonUnitCard(seat, card, cardType, targetRuntimeId);
+            return;
+        }
 
         EnsureLegalPlacement(seat, card.Definition, slot);
         ShiftBoardForPlacement(seat, slot);
@@ -485,7 +509,200 @@ public sealed class MatchEngine
 
         _logs.Add($"{card.Definition.DisplayName} entered {slot}.");
         ResolveTriggeredAbilities(seat.SeatIndex, seat.Board[slot]!, TriggerKind.OnPlay);
+        CleanupDeaths();
         UpdatedAt = DateTimeOffset.UtcNow;
+    }
+
+    // Spell (3) / Utility (1) / Equipment (2): not board occupants. They resolve their OnPlay
+    // abilities against a chosen target unit (Spell can also self-resolve when no target), deduct
+    // mana, leave the hand, and emit battle events. Equipment additionally attaches a timed
+    // stat modifier to the target unit.
+    private void PlayNonUnitCard(RuntimeSeatState seat, RuntimeHandCard card, CardType cardType, string? targetRuntimeId)
+    {
+        var definition = card.Definition;
+        if (definition.ManaCost > seat.Mana)
+        {
+            throw GameActionException.NotEnoughMana();
+        }
+
+        var target = ResolveActionTarget(targetRuntimeId);
+
+        // Equipment always needs a unit; spells/utility need one unless their effects are self/hero
+        // oriented (e.g. a heal with no target makes no sense, but a hero-damage spell is fine).
+        var needsTarget = cardType == CardType.Equipment || RequiresTarget(definition);
+        if (needsTarget && target == null)
+        {
+            throw string.IsNullOrWhiteSpace(targetRuntimeId)
+                ? GameActionException.TargetRequired()
+                : GameActionException.InvalidTarget();
+        }
+
+        if (!string.IsNullOrWhiteSpace(targetRuntimeId) && target == null)
+        {
+            throw GameActionException.InvalidTarget();
+        }
+
+        seat.Mana -= definition.ManaCost;
+        seat.Hand.Remove(card);
+
+        var sourceRuntimeId = $"play-{Guid.NewGuid():N}";
+        var kind = cardType switch
+        {
+            CardType.Equipment => "equipment_played",
+            CardType.Utility => "utility_played",
+            _ => "spell_played"
+        };
+        AddBattleEvent(kind, seat.SeatIndex, sourceRuntimeId, target?.OwnerSeatIndex, target?.RuntimeId, null, null, definition.ManaCost, null, null, null, null, null, null, $"{definition.DisplayName} was played.");
+
+        if (cardType == CardType.Equipment)
+        {
+            ApplyEquipment(seat.SeatIndex, sourceRuntimeId, definition, target!);
+        }
+        else
+        {
+            ResolveOnPlayEffects(seat.SeatIndex, sourceRuntimeId, definition, target);
+        }
+
+        _logs.Add($"{definition.DisplayName} was played.");
+        CleanupDeaths();
+        UpdatedAt = DateTimeOffset.UtcNow;
+    }
+
+    // A card "requires" an explicit target if any of its OnPlay effects act on a specific unit
+    // (damage/heal/buff/armor/status) rather than the hero.
+    private static bool RequiresTarget(ServerCardDefinition definition)
+    {
+        return definition.Abilities
+            .Where(a => a.Trigger == TriggerKind.OnPlay)
+            .SelectMany(a => a.Effects)
+            .Any(e => e.Kind is EffectKind.Damage or EffectKind.Heal or EffectKind.GainArmor
+                or EffectKind.BuffAttack or EffectKind.AddShield or EffectKind.ApplyPoison
+                or EffectKind.ApplyStun);
+    }
+
+    private RuntimeBoardCard? ResolveActionTarget(string? targetRuntimeId)
+    {
+        return string.IsNullOrWhiteSpace(targetRuntimeId) ? null : FindCard(targetRuntimeId);
+    }
+
+    // Resolve a non-unit card's OnPlay abilities directly against the chosen target (or the
+    // source seat when there is none), reusing the same effect pipeline units use.
+    private void ResolveOnPlayEffects(int sourceSeatIndex, string sourceRuntimeId, ServerCardDefinition definition, RuntimeBoardCard? target)
+    {
+        foreach (var ability in definition.Abilities.Where(a => a.Trigger == TriggerKind.OnPlay))
+        {
+            AddBattleEvent("skill_begin", sourceSeatIndex, sourceRuntimeId, target?.OwnerSeatIndex, target?.RuntimeId, ability.AbilityId, null, 0, null, null, null, null, null, null, $"{definition.DisplayName} used {ability.DisplayName}.");
+            var targetSeatIndex = target?.OwnerSeatIndex ?? sourceSeatIndex;
+            ApplyEffects(sourceSeatIndex, targetSeatIndex, sourceRuntimeId, target, ability, ability.Effects);
+            if (DuelEnded)
+            {
+                break;
+            }
+        }
+    }
+
+    // Equipment attaches a timed +/- attack and/or armor modifier to the target unit and may also
+    // apply OnPlay status effects (e.g. poison). Duration comes from the first effect's
+    // DurationTurns; a missing/zero duration means "until the unit dies".
+    private void ApplyEquipment(int sourceSeatIndex, string sourceRuntimeId, ServerCardDefinition definition, RuntimeBoardCard target)
+    {
+        var onPlayEffects = definition.Abilities
+            .Where(a => a.Trigger == TriggerKind.OnPlay)
+            .SelectMany(a => a.Effects.Select(e => (a, e)))
+            .ToList();
+
+        var attackDelta = 0;
+        var armorDelta = 0;
+        int? durationTurns = null;
+
+        foreach (var (ability, effect) in onPlayEffects)
+        {
+            durationTurns ??= effect.DurationTurns;
+            switch (effect.Kind)
+            {
+                case EffectKind.BuffAttack:
+                    attackDelta += effect.Amount;
+                    break;
+                case EffectKind.GainArmor or EffectKind.Armor:
+                    armorDelta += effect.Amount;
+                    break;
+                case EffectKind.ApplyPoison:
+                    AddOrRefreshStatus(target, StatusEffectKind.Poison, effect.Amount, effect.DurationTurns ?? effect.SecondaryAmount ?? 2, sourceRuntimeId, ability.AbilityId);
+                    break;
+                case EffectKind.ApplyStun:
+                    AddOrRefreshStatus(target, StatusEffectKind.Stun, effect.Amount, effect.DurationTurns ?? 1, sourceRuntimeId, ability.AbilityId);
+                    break;
+                case EffectKind.AddShield:
+                    AddOrRefreshStatus(target, StatusEffectKind.Shield, effect.Amount <= 0 ? 1 : effect.Amount, effect.DurationTurns ?? 99, sourceRuntimeId, ability.AbilityId);
+                    break;
+            }
+        }
+
+        if (attackDelta == 0 && armorDelta == 0)
+        {
+            return;
+        }
+
+        var permanent = !durationTurns.HasValue || durationTurns.Value <= 0;
+        var attackBefore = target.Attack;
+        var armorBefore = target.Armor;
+        target.Attack = Math.Max(0, target.Attack + attackDelta);
+        target.Armor = Math.Max(0, target.Armor + armorDelta);
+
+        // Record the *actual* applied deltas so expiry reverts exactly what was added.
+        var appliedAttack = target.Attack - attackBefore;
+        var appliedArmor = target.Armor - armorBefore;
+
+        target.Modifiers.Add(new RuntimeStatModifier
+        {
+            EquipmentCardId = definition.CardId,
+            DisplayName = definition.DisplayName,
+            OwnerSeatIndex = target.OwnerSeatIndex,
+            AttackDelta = appliedAttack,
+            ArmorDelta = appliedArmor,
+            RemainingTurns = permanent ? 0 : durationTurns!.Value,
+            Permanent = permanent,
+            SourceRuntimeId = sourceRuntimeId
+        });
+
+        AddBattleEvent("equipment_attached", sourceSeatIndex, sourceRuntimeId, target.OwnerSeatIndex, target.RuntimeId, null, null, appliedAttack, null, null, armorBefore, target.Armor, null, permanent ? null : durationTurns, $"{definition.DisplayName} equipped to {target.Definition.DisplayName}.");
+    }
+
+    // Tick down equipment modifiers belonging to a seat at that seat's end-of-turn; revert the
+    // applied stat deltas when a modifier expires.
+    private void TickEquipmentModifiers(int seatIndex)
+    {
+        foreach (var slot in _seats[seatIndex].Board.Values)
+        {
+            if (slot == null || slot.Modifiers.Count == 0)
+            {
+                continue;
+            }
+
+            foreach (var modifier in slot.Modifiers.ToArray())
+            {
+                if (modifier.Permanent)
+                {
+                    continue;
+                }
+
+                modifier.RemainingTurns -= 1;
+                if (modifier.RemainingTurns <= 0)
+                {
+                    RevertModifier(slot, modifier);
+                }
+            }
+        }
+    }
+
+    private void RevertModifier(RuntimeBoardCard card, RuntimeStatModifier modifier)
+    {
+        var attackBefore = card.Attack;
+        var armorBefore = card.Armor;
+        card.Attack = Math.Max(0, card.Attack - modifier.AttackDelta);
+        card.Armor = Math.Max(0, card.Armor - modifier.ArmorDelta);
+        card.Modifiers.Remove(modifier);
+        AddBattleEvent("equipment_expired", null, modifier.SourceRuntimeId, card.OwnerSeatIndex, card.RuntimeId, null, null, modifier.AttackDelta, null, null, armorBefore, card.Armor, null, null, $"{modifier.DisplayName} wore off {card.Definition.DisplayName}.");
     }
 
     public void EndTurn(string playerId)
@@ -495,6 +712,7 @@ public sealed class MatchEngine
         ResolveTurnAbilities(seat.SeatIndex, TriggerKind.OnTurnEnd);
         ExecuteBattlePhase(seat.SeatIndex);
         CleanupDeaths();
+        TickEquipmentModifiers(seat.SeatIndex);
 
         if (!DuelEnded)
         {

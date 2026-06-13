@@ -50,6 +50,28 @@ public class MatchEngineTests
             TargetSelectorKind.FrontlineFirst, 1, abilities);
     }
 
+    // A non-unit card (Spell=3 / Equipment=2 / Utility=1) carrying OnPlay abilities. It is never
+    // placed on the board; its effects resolve against the PlayCard target.
+    private static ServerCardDefinition CreateNonUnitCard(
+        string id,
+        string name,
+        CardType cardType,
+        IReadOnlyList<ServerAbilityDefinition> abilities,
+        int mana = 1)
+    {
+        return new ServerCardDefinition(
+            id, name, "", mana, 0, 0, 0, (int)cardType, 0, 0, null, AllowedRow.Flexible,
+            TargetSelectorKind.Self, 0, abilities);
+    }
+
+    private static ServerAbilityDefinition OnPlay(
+        string id,
+        params ServerEffectDefinition[] effects)
+    {
+        return new ServerAbilityDefinition(
+            id, id, TriggerKind.OnPlay, TargetSelectorKind.Self, effects, SkillType.Utility);
+    }
+
     private static ServerAbilityDefinition Ability(
         string id,
         TriggerKind trigger,
@@ -716,5 +738,158 @@ public class MatchEngineTests
         Assert.Equal(6, engine.Seats[0].Board[BoardSlot.Front]!.CurrentHealth);
         Assert.Contains(engine.CreateSnapshotForSeat(0).BattleEvents,
             e => e.Kind == "heal" && e.AbilityId == "regenerate" && e.Amount == 2);
+    }
+
+    [Fact]
+    public void PlayCard_Spell_DamagesTheChosenEnemyTarget()
+    {
+        var engine = new MatchEngine("match1", "ABC123", QueueMode.Casual, TimeSpan.FromSeconds(20), CreateRules());
+        var bolt = CreateNonUnitCard("bolt", "Flame Bolt", CardType.Spell,
+            new[] { OnPlay("spell_strike", new ServerEffectDefinition(EffectKind.Damage, 4)) }, mana: 1);
+        var cards = new[]
+        {
+            CreateCard("p1_unit", "P1 Unit", mana: 1, attack: 0, health: 5),
+            bolt,
+            CreateCard("p2_target", "P2 Target", mana: 1, attack: 0, health: 6)
+        };
+
+        StartDuel(engine, cards);
+        // Opponent fields a target first.
+        engine.EndTurn("player1");
+        Play(engine, "player2", 1, "p2_target", BoardSlot.Front);
+        engine.EndTurn("player2");
+
+        var target = engine.Seats[1].Board[BoardSlot.Front]!;
+        var manaBefore = engine.Seats[0].Mana;
+        var boltKey = engine.Seats[0].Hand.Single(c => c.Definition.CardId == "bolt").RuntimeHandKey;
+        engine.PlayCard("player1", boltKey, BoardSlot.Front, target.RuntimeId);
+
+        Assert.Equal(2, target.CurrentHealth); // 6 - 4
+        Assert.Equal(manaBefore - 1, engine.Seats[0].Mana); // mana deducted
+        Assert.DoesNotContain(engine.Seats[0].Hand, c => c.Definition.CardId == "bolt"); // discarded
+        Assert.Null(engine.Seats[0].Board[BoardSlot.Front]); // spell is not a board occupant
+        var events = engine.CreateSnapshotForSeat(0).BattleEvents;
+        Assert.Contains(events, e => e.Kind == "spell_played");
+        Assert.Contains(events, e => e.Kind == "card_damage" && e.TargetRuntimeId == target.RuntimeId && e.Amount == 4);
+    }
+
+    [Fact]
+    public void PlayCard_Spell_WithMissingTarget_ThrowsTargetRequired()
+    {
+        var engine = new MatchEngine("match1", "ABC123", QueueMode.Casual, TimeSpan.FromSeconds(20), CreateRules());
+        var bolt = CreateNonUnitCard("bolt", "Flame Bolt", CardType.Spell,
+            new[] { OnPlay("spell_strike", new ServerEffectDefinition(EffectKind.Damage, 4)) }, mana: 1);
+        var cards = new[] { bolt, CreateCard("filler", "Filler", mana: 1) };
+
+        StartDuel(engine, cards);
+        var boltKey = engine.Seats[0].Hand.Single(c => c.Definition.CardId == "bolt").RuntimeHandKey;
+
+        var ex = Assert.Throws<GameActionException>(() => engine.PlayCard("player1", boltKey, BoardSlot.Front, null));
+        Assert.Equal("target_required", ex.Code);
+        // Card stays in hand and mana is untouched after a rejected play.
+        Assert.Contains(engine.Seats[0].Hand, c => c.Definition.CardId == "bolt");
+    }
+
+    [Fact]
+    public void PlayCard_Equipment_BuffLastsNTurnsThenReverts()
+    {
+        var engine = new MatchEngine("match1", "ABC123", QueueMode.Casual, TimeSpan.FromSeconds(20), CreateRules());
+        // +3 attack for 2 of the owner's end-of-turn ticks.
+        var weapon = CreateNonUnitCard("weapon", "Forge Blade", CardType.Equipment,
+            new[] { OnPlay("equip_weapon", new ServerEffectDefinition(EffectKind.BuffAttack, 3, DurationTurns: 2)) }, mana: 0);
+        var cards = new[]
+        {
+            CreateCard("bearer", "Bearer", mana: 0, attack: 1, health: 20),
+            weapon
+        };
+
+        StartDuel(engine, cards);
+        Play(engine, "player1", 0, "bearer", BoardSlot.Front);
+        var bearer = engine.Seats[0].Board[BoardSlot.Front]!;
+        var weaponKey = engine.Seats[0].Hand.Single(c => c.Definition.CardId == "weapon").RuntimeHandKey;
+        engine.PlayCard("player1", weaponKey, BoardSlot.Front, bearer.RuntimeId);
+
+        Assert.Equal(4, bearer.Attack); // 1 + 3
+        Assert.Single(bearer.Modifiers);
+        Assert.Null(engine.Seats[0].Board[BoardSlot.BackLeft]); // equipment not a board occupant
+        Assert.Contains(engine.CreateSnapshotForSeat(0).BattleEvents, e => e.Kind == "equipment_attached");
+
+        // Tick down: owner's end of turn 1.
+        engine.EndTurn("player1");
+        Assert.Equal(4, bearer.Attack); // still buffed after first tick (2 -> 1 remaining)
+        engine.EndTurn("player2");
+
+        // Owner's end of turn 2: modifier expires and reverts.
+        engine.EndTurn("player1");
+        Assert.Equal(1, bearer.Attack); // reverted to base
+        Assert.Empty(bearer.Modifiers);
+        Assert.Contains(engine.CreateSnapshotForSeat(0).BattleEvents, e => e.Kind == "equipment_expired");
+    }
+
+    [Fact]
+    public void PlayCard_Equipment_IsClearedWhenTheEquippedUnitDies()
+    {
+        var engine = new MatchEngine("match1", "ABC123", QueueMode.Casual, TimeSpan.FromSeconds(20), CreateRules());
+        var weapon = CreateNonUnitCard("weapon", "Forge Blade", CardType.Equipment,
+            new[] { OnPlay("equip_weapon", new ServerEffectDefinition(EffectKind.BuffAttack, 3, DurationTurns: 5)) }, mana: 0);
+        var cards = new[]
+        {
+            CreateCard("fragile", "Fragile", mana: 0, attack: 0, health: 1),
+            weapon,
+            CreateCard("killer", "Killer", mana: 1, attack: 5, health: 10)
+        };
+
+        StartDuel(engine, cards);
+        Play(engine, "player1", 0, "fragile", BoardSlot.Front);
+        var fragile = engine.Seats[0].Board[BoardSlot.Front]!;
+        var weaponKey = engine.Seats[0].Hand.Single(c => c.Definition.CardId == "weapon").RuntimeHandKey;
+        engine.PlayCard("player1", weaponKey, BoardSlot.Front, fragile.RuntimeId);
+        Assert.Single(fragile.Modifiers);
+
+        engine.EndTurn("player1");
+        Play(engine, "player2", 1, "killer", BoardSlot.Front);
+        engine.EndTurn("player2"); // killer not ready yet
+        engine.EndTurn("player1");
+        engine.EndTurn("player2"); // killer strikes the fragile bearer for 5 -> dies, modifier gone with it
+
+        Assert.Null(engine.Seats[0].Board[BoardSlot.Front]);
+        Assert.Contains(engine.CreateSnapshotForSeat(0).BattleEvents, e => e.Kind == "death");
+    }
+
+    [Fact]
+    public void PlayCard_Utility_HealsAFriendlyTarget()
+    {
+        var engine = new MatchEngine("match1", "ABC123", QueueMode.Casual, TimeSpan.FromSeconds(20), CreateRules());
+        var blessing = CreateNonUnitCard("blessing", "Blessing", CardType.Utility,
+            new[] { OnPlay("util_blessing", new ServerEffectDefinition(EffectKind.Heal, 3)) }, mana: 1);
+        var wounded = new ServerCardDefinition(
+            "wounded", "Wounded", "", 1, 1, 10, 0, 0, 0, 0, (int)UnitType.Melee, AllowedRow.Flexible,
+            TargetSelectorKind.FrontlineFirst, 1, Array.Empty<ServerAbilityDefinition>());
+        var cards = new[]
+        {
+            wounded,
+            blessing,
+            CreateCard("attacker", "Attacker", mana: 1, attack: 4, health: 10)
+        };
+
+        StartDuel(engine, cards);
+        Play(engine, "player1", 0, "wounded", BoardSlot.Front);
+        engine.EndTurn("player1");
+        Play(engine, "player2", 1, "attacker", BoardSlot.Front);
+        engine.EndTurn("player2"); // attacker not ready
+        engine.EndTurn("player1");
+        engine.EndTurn("player2"); // attacker strikes wounded for 4 -> 6
+
+        var bearer = engine.Seats[0].Board[BoardSlot.Front]!;
+        Assert.True(bearer.CurrentHealth <= 6, $"expected wounded, was {bearer.CurrentHealth}");
+        var hpBeforeHeal = bearer.CurrentHealth;
+
+        var blessKey = engine.Seats[0].Hand.Single(c => c.Definition.CardId == "blessing").RuntimeHandKey;
+        engine.PlayCard("player1", blessKey, BoardSlot.Front, bearer.RuntimeId);
+
+        Assert.Equal(Math.Min(bearer.MaxHealth, hpBeforeHeal + 3), bearer.CurrentHealth);
+        Assert.DoesNotContain(engine.Seats[0].Hand, c => c.Definition.CardId == "blessing");
+        Assert.Contains(engine.CreateSnapshotForSeat(0).BattleEvents, e => e.Kind == "utility_played");
+        Assert.Contains(engine.CreateSnapshotForSeat(0).BattleEvents, e => e.Kind == "heal");
     }
 }

@@ -66,7 +66,7 @@ public sealed class MatchesController(IMatchService matchService, AppDbContext d
     public Task<ActionResult<MatchSnapshot>> PlayCard(string matchId, PlayCardRequest request)
     {
         EnsurePlayer(request.PlayerId);
-        return ExecuteMatchActionAsync(matchId, () => matchService.PlayCard(matchId, request.PlayerId, request.RuntimeHandKey, request.SlotIndex));
+        return ExecuteMatchActionAsync(matchId, () => matchService.PlayCard(matchId, request.PlayerId, request.RuntimeHandKey, request.SlotIndex, request.TargetRuntimeId));
     }
 
     [HttpPost("{matchId}/end-turn")]

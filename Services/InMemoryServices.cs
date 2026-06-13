@@ -33,7 +33,7 @@ public interface IMatchService
     bool TryReconnect(string matchId, string playerId, string reconnectToken, out int seatIndex);
     MatchSnapshot Connect(string matchId, string playerId, string reconnectToken, string connectionId);
     MatchSnapshot SetReady(string matchId, string playerId, bool ready);
-    MatchSnapshot PlayCard(string matchId, string playerId, string runtimeHandKey, int slotIndex);
+    MatchSnapshot PlayCard(string matchId, string playerId, string runtimeHandKey, int slotIndex, string? targetRuntimeId = null);
     MatchSnapshot EndTurn(string matchId, string playerId);
     MatchSnapshot DestroyCard(string matchId, string playerId, string runtimeCardId);
     MatchSnapshot Forfeit(string matchId, string playerId);
@@ -313,14 +313,14 @@ public sealed class InMemoryMatchService : IMatchService, IDisposable
         return room.Engine.CreateSnapshotForSeat(seatIndex);
     }
 
-    public MatchSnapshot PlayCard(string matchId, string playerId, string runtimeHandKey, int slotIndex)
+    public MatchSnapshot PlayCard(string matchId, string playerId, string runtimeHandKey, int slotIndex, string? targetRuntimeId = null)
     {
         var room = GetRoom(matchId);
-        room.Engine.PlayCard(playerId, runtimeHandKey, (BoardSlot)slotIndex);
+        room.Engine.PlayCard(playerId, runtimeHandKey, (BoardSlot)slotIndex, targetRuntimeId);
         var seatIndex = room.Engine.Seats.First(x => x.PlayerId == playerId).SeatIndex;
 
         // Log action to replay
-        _ = LogReplayActionAsync(matchId, playerId, "PlayCard", new { runtimeHandKey, slotIndex });
+        _ = LogReplayActionAsync(matchId, playerId, "PlayCard", new { runtimeHandKey, slotIndex, targetRuntimeId });
 
         return room.Engine.CreateSnapshotForSeat(seatIndex);
     }

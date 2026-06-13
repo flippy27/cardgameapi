@@ -32,6 +32,17 @@ ABIL = {
     # newly implemented in Game/MatchEngine.cs
     "cleave": "ability-12", "execute": "ability-13", "reflection": "ability-14",
     "last_stand": "ability-15", "regenerate": "ability-16",
+    # OnPlay abilities for non-unit cards (Spell=3 / Equipment=2 / Utility=1).
+    # These resolve against the PlayCard target the player chooses.
+    "spell_strike": "ability-17",      # direct damage to target unit
+    "spell_mend": "ability-18",        # heal target unit
+    "spell_venom": "ability-19",       # apply poison to target unit
+    "spell_freeze": "ability-20",      # stun target unit
+    "equip_weapon": "ability-21",      # +attack buff for N turns
+    "equip_armor": "ability-22",       # +armor buff for N turns
+    "equip_curse": "ability-23",       # -attack debuff for N turns
+    "util_bulwark": "ability-24",      # grant shield to friendly target
+    "util_blessing": "ability-25",     # heal + small attack buff to friendly target
 }
 
 ABIL_DISPLAY = {
@@ -40,6 +51,9 @@ ABIL_DISPLAY = {
     "regenerate_left": "Regenerate Left", "taunt": "Taunt", "haste": "Haste",
     "cleave": "Cleave", "execute": "Execute", "reflection": "Reflection",
     "last_stand": "Last Stand", "regenerate": "Regenerate",
+    "spell_strike": "Strike", "spell_mend": "Mend", "spell_venom": "Envenom",
+    "spell_freeze": "Freeze", "equip_weapon": "Weapon", "equip_armor": "Plating",
+    "equip_curse": "Curse", "util_bulwark": "Bulwark", "util_blessing": "Blessing",
 }
 
 MELEE, RANGED, MAGIC = 0, 1, 2
@@ -172,6 +186,19 @@ FACTIONS = {
 
 RARITY_NAME = {0: "Common", 1: "Rare", 2: "Epic", 3: "Legendary"}
 
+# Non-unit OnPlay loadouts per faction. Each non-unit card gets exactly one OnPlay ability whose
+# effect scales with mana (computed at emit time). Themed so each faction plays to its identity.
+#   spell  -> offensive/instant (damage, poison, stun)
+#   equip  -> timed buff (friendly weapon/armor) or debuff (enemy curse)
+#   util   -> friendly support (heal+buff or shield)
+NONUNIT_LOADOUTS = {
+    0: {"spell": "spell_strike", "equip": "equip_weapon", "util": "util_blessing"},  # Ember: burn + sharpen
+    1: {"spell": "spell_freeze", "equip": "equip_armor",  "util": "util_bulwark"},   # Tidal: control + shield
+    2: {"spell": "spell_venom",  "equip": "equip_curse",  "util": "util_blessing"},  # Grove: poison + sap
+    3: {"spell": "spell_strike", "equip": "equip_armor",  "util": "util_bulwark"},   # Alloy: steel + plate
+    4: {"spell": "spell_strike", "equip": "equip_curse",  "util": "util_blessing"},  # Void: drain + curse
+}
+
 # rarity -> mana range (weighted toward middle of range)
 MANA_RANGE = {0: (1, 4), 1: (2, 6), 2: (4, 8), 3: (6, 10)}
 RARITY_BONUS = {0: 0, 1: 1, 2: 2, 3: 4}
@@ -293,15 +320,19 @@ for fac_id, fac in FACTIONS.items():
                 card_abilities.append((cid, ABIL[a], seq))
 
         else:  # non-unit (Spell=3 / Equipment=2 / Utility=1)
+            loadout = NONUNIT_LOADOUTS[fac_id]
             if ctype == 3:
                 name = next(spell_iter)
-                desc_base = "Cast an immediate effect, then discard."
+                ability_key = loadout["spell"]
+                desc_base = f"Target a unit on play. {ABIL_DISPLAY[ability_key]}, then discard."
             elif ctype == 2:
                 name = next(equip_iter)
-                desc_base = "Equip to a friendly unit to grant a bonus."
+                ability_key = loadout["equip"]
+                desc_base = f"Attach to a unit on play. {ABIL_DISPLAY[ability_key]} for a few turns."
             else:
                 name = next(util_iter)
-                desc_base = "A reusable support effect."
+                ability_key = loadout["util"]
+                desc_base = f"Target a friendly unit on play. {ABIL_DISPLAY[ability_key]}."
             flavor = random.choice(fac["flavor"])
             desc = f"{flavor} {desc_base}"
             cards.append(dict(
@@ -309,6 +340,8 @@ for fac_id, fac in FACTIONS.items():
                 atk=0, hp=0, armor=0, ctype=ctype, rarity=rarity, faction=fac_id,
                 unit_type=None, allowed_row=2, selector=0, turns=0, limited=False,
             ))
+            ca_id += 1
+            card_abilities.append((cid, ABIL[ability_key], 0))
 
 # ----------------------------------------------------------------------------
 # Decks: 2 per user, built from units of two factions each (<=3 copies, 24 cards)
@@ -386,6 +419,16 @@ abilities_rows = [
  ("ability-14","reflection","Reflection","Reflects fixed damage back at attackers that strike it",0,3,0,"skill_reflection",'{"normalAttackModifier":true}'),
  ("ability-15","last_stand","Last Stand","The first lethal blow leaves it at 1 health; used once",0,3,0,"skill_last_stand",'{"normalAttackModifier":true}'),
  ("ability-16","regenerate","Regenerate","Heals itself at the end of its turn",3,2,0,"skill_regenerate",'{"regenTarget":"self"}'),
+ # OnPlay (trigger 0) abilities for non-unit cards. Resolve against the chosen PlayCard target.
+ ("ability-17","spell_strike","Strike","Deal direct damage to the target unit",1,0,1,"spell_strike",'{"cardType":"spell"}'),
+ ("ability-18","spell_mend","Mend","Heal the target unit",3,0,4,"spell_mend",'{"cardType":"spell"}'),
+ ("ability-19","spell_venom","Envenom","Poison the target unit for several turns",1,0,1,"spell_venom",'{"cardType":"spell"}'),
+ ("ability-20","spell_freeze","Freeze","Stun the target unit so it skips its next attack",1,0,1,"spell_freeze",'{"cardType":"spell"}'),
+ ("ability-21","equip_weapon","Weapon","Grants bonus attack for a few turns",2,0,5,"equip_weapon",'{"cardType":"equipment"}'),
+ ("ability-22","equip_armor","Plating","Grants bonus armor for a few turns",0,0,2,"equip_armor",'{"cardType":"equipment"}'),
+ ("ability-23","equip_curse","Curse","Saps the target unit's attack for a few turns",1,0,3,"equip_curse",'{"cardType":"equipment"}'),
+ ("ability-24","util_bulwark","Bulwark","Grants a friendly unit a protective shield",0,0,5,"util_bulwark",'{"cardType":"utility"}'),
+ ("ability-25","util_blessing","Blessing","Heals and sharpens a friendly unit",3,0,5,"util_blessing",'{"cardType":"utility"}'),
 ]
 rows = []
 for (i,aid,dn,desc,st,tk,ts,cue,meta) in abilities_rows:
@@ -408,6 +451,17 @@ effect_rows = [
  ("effect-9","ability-12",21,0,"NULL","NULL","NULL",0,'{"animationStep":"cleave","note":"usesAttackerAttack"}'),
  ("effect-10","ability-15",22,0,"NULL","NULL","NULL",0,'{"animationStep":"last-stand"}'),
  ("effect-11","ability-16",1,2,"NULL","NULL","NULL",0,'{"animationStep":"regen-self"}'),
+ # Non-unit OnPlay effects. effect_kind: 0 Damage,1 Heal,2 GainArmor,3 BuffAttack,28 AddShield,29 ApplyPoison,30 ApplyStun.
+ ("effect-12","ability-17",0,4,"NULL","NULL","NULL",0,'{"animationStep":"spell-strike"}'),
+ ("effect-13","ability-18",1,4,"NULL","NULL","NULL",0,'{"animationStep":"spell-mend"}'),
+ ("effect-14","ability-19",29,2,"NULL",3,"NULL",0,'{"animationStep":"spell-venom"}'),
+ ("effect-15","ability-20",30,0,"NULL",1,"NULL",0,'{"animationStep":"spell-freeze"}'),
+ ("effect-16","ability-21",3,2,"NULL",3,"NULL",0,'{"animationStep":"equip-weapon"}'),
+ ("effect-17","ability-22",2,3,"NULL",3,"NULL",0,'{"animationStep":"equip-armor"}'),
+ ("effect-18","ability-23",3,-2,"NULL",3,"NULL",0,'{"animationStep":"equip-curse"}'),
+ ("effect-19","ability-24",28,1,"NULL",99,"NULL",0,'{"animationStep":"util-bulwark"}'),
+ ("effect-20","ability-25",1,3,"NULL","NULL","NULL",0,'{"animationStep":"util-blessing-heal"}'),
+ ("effect-21","ability-25",3,1,"NULL",3,"NULL",1,'{"animationStep":"util-blessing-buff"}'),
 ]
 rows = []
 for (i,ad,ek,amt,sec,dur,tso,seq,meta) in effect_rows:
