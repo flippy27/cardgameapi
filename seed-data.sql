@@ -6,6 +6,16 @@
 -- ============================================================
 BEGIN;
 
+-- Clear dependents first (FKs into cards/users/matches) so the catalog can be re-seeded.
+DELETE FROM player_card_upgrades;
+DELETE FROM player_cards;
+DELETE FROM player_items;
+DELETE FROM card_crafting_requirements;
+DELETE FROM match_actions;
+DELETE FROM replay_logs;
+DELETE FROM ratings;
+DELETE FROM matches;
+DELETE FROM audit_logs;
 DELETE FROM deck_cards;
 DELETE FROM decks;
 DELETE FROM card_abilities;
