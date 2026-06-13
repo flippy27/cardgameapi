@@ -367,11 +367,22 @@ def build_deck(fac_ids, size=24):
             break
     return chosen[:size]
 
+# Test deck: 30 cards = 15 units + 5 spell + 5 equipment + 5 utility, so every card type/effect
+# can be drawn and exercised. Distinct cards (no duplicates) across factions.
+def build_test_deck():
+    units = sorted([c for c in cards if c["ctype"] == 0], key=lambda c: (c["mana"], c["card_id"]))
+    spells = [c for c in cards if c["ctype"] == 3]
+    equips = [c for c in cards if c["ctype"] == 2]
+    utils = [c for c in cards if c["ctype"] == 1]
+    return units[:15] + spells[:5] + equips[:5] + utils[:5]
+
 DECKS = [
     ("deck-1", "user-1", "deck_playerone_ember", "Ember Aggro", build_deck([0])),
     ("deck-2", "user-1", "deck_playerone_alloy", "Alloy Wall", build_deck([3])),
     ("deck-3", "user-2", "deck_playertwo_grove", "Grove Venom", build_deck([2])),
     ("deck-4", "user-2", "deck_playertwo_void",  "Void Tempo", build_deck([4])),
+    ("deck-5", "user-1", "deck_playerone_test",  "Test All Types", build_test_deck()),
+    ("deck-6", "user-2", "deck_playertwo_test",  "Test All Types", build_test_deck()),
 ]
 
 # ----------------------------------------------------------------------------
